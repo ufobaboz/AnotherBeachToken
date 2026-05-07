@@ -1,6 +1,11 @@
 # Generato al build, contiene env vars
 public/assets/config.js
 
+# Copia locale dello script di bootstrap del primo super_admin,
+# generata da promote-super-admin.sql.example sostituendo i placeholder.
+# Contiene UUID e nome reali, NON va committata.
+sql/promote-super-admin.sql
+
 # Sistema
 .DS_Store
 Thumbs.db
