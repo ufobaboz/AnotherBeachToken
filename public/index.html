@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hello world -- AnotherBeachToken</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="/assets/config.js"></script>
+</head>
+<body>
+  <main class="container" x-data="hello()" x-init="run()">
+    <hgroup>
+      <h1>Hello world</h1>
+      <p>Smoke test: Cloudflare Pages + Supabase</p>
+    </hgroup>
+
+    <article x-show="loading" aria-busy="true">Chiamata a Supabase in corso...</article>
+
+    <article x-show="error" x-cloak>
+      <header><strong>Errore</strong></header>
+      <pre x-text="error"></pre>
+      <footer>
+        <small>
+          Probabili cause: env vars non iniettate al build, funzione
+          <code>hello_world()</code> non creata in Supabase, oppure
+          permessi <code>execute</code> non concessi al ruolo <code>anon</code>.
+        </small>
+      </footer>
+    </article>
+
+    <article x-show="result" x-cloak>
+      <header><strong>OK -- la pipeline funziona</strong></header>
+      <ul>
+        <li>Messaggio: <code x-text="result?.message"></code></li>
+        <li>Ora server Postgres: <code x-text="result?.server_time"></code></li>
+        <li>Versione Postgres: <code x-text="result?.db_version"></code></li>
+      </ul>
+      <footer>
+        <small>
+          Cloudflare Pages serve questa pagina. La chiamata RPC
+          <code>hello_world()</code> ha raggiunto Supabase e tornato dati reali.
+        </small>
+      </footer>
+    </article>
+
+    <details>
+      <summary>Configurazione iniettata al build</summary>
+      <ul>
+        <li>Supabase URL: <code x-text="config.url"></code></li>
+        <li>Anon key (primi 20 char): <code x-text="config.keyPreview"></code></li>
+      </ul>
+    </details>
+  </main>
+
+  <script>
+    function hello() {
+      return {
+        loading: true,
+        error: null,
+        result: null,
+        config: {
+          url: window.APP_CONFIG?.SUPABASE_URL ?? '(non configurato)',
+          keyPreview: (window.APP_CONFIG?.SUPABASE_ANON_KEY ?? '').slice(0, 20) + '...'
+        },
+
+        async run() {
+          try {
+            if (!window.APP_CONFIG?.SUPABASE_URL || !window.APP_CONFIG?.SUPABASE_ANON_KEY) {
+              throw new Error(
+                'APP_CONFIG mancante. Le variabili SUPABASE_URL e ' +
+                'SUPABASE_ANON_KEY non sono state iniettate al build. ' +
+                'Verifica le env vars su Cloudflare Pages.'
+              );
+            }
+            const { createClient } = window.supabase;
+            const client = createClient(
+              window.APP_CONFIG.SUPABASE_URL,
+              window.APP_CONFIG.SUPABASE_ANON_KEY
+            );
+            const { data, error } = await client.rpc('hello_world');
+            if (error) throw error;
+            this.result = Array.isArray(data) ? data[0] : data;
+          } catch (e) {
+            this.error = e.message ?? String(e);
+          } finally {
+            this.loading = false;
+          }
+        }
+      };
+    }
+  </script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</body>
+</html>
