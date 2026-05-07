@@ -51,10 +51,13 @@ download_file \
   "${JSDELIVR}/html5-qrcode@${HTML5QR_VERSION}/html5-qrcode.min.js" \
   "${VENDOR_ROOT}/html5-qrcode/${HTML5QR_VERSION}/html5-qrcode.min.js"
 
-# 5. qrcode (browser bundle minified)
+# 5. qrcode (ESM bundle, jsdelivr +esm). Il package upstream non
+# pubblica un UMD browser standalone: lib/browser.js e' un wrapper
+# che richiede un bundler. Il bundle ESM auto-generato da jsdelivr
+# (rollup+terser) e' pronto per <script type="module">.
 download_file \
-  "${JSDELIVR}/qrcode@${QRCODE_VERSION}/lib/browser.min.js" \
-  "${VENDOR_ROOT}/qrcode/${QRCODE_VERSION}/qrcode.min.js"
+  "${JSDELIVR}/qrcode@${QRCODE_VERSION}/+esm" \
+  "${VENDOR_ROOT}/qrcode/${QRCODE_VERSION}/qrcode.esm.min.js"
 
 # 6. Shoelace -- intera cartella cdn/ via tarball npm registry (no npm CLI)
 SL_DEST="${VENDOR_ROOT}/shoelace/${SHOELACE_VERSION}"
