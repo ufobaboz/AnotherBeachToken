@@ -16,6 +16,10 @@ SHOELACE_VERSION="2.20.1"
 
 JSDELIVR="https://cdn.jsdelivr.net/npm"
 
+command -v curl >/dev/null 2>&1 || { echo "[error] curl richiesto"; exit 1; }
+command -v npm  >/dev/null 2>&1 || { echo "[error] npm richiesto per Shoelace (npm pack)"; exit 1; }
+command -v tar  >/dev/null 2>&1 || { echo "[error] tar richiesto per Shoelace"; exit 1; }
+
 download_file() {
   local url="$1"
   local dest="$2"
@@ -64,8 +68,10 @@ else
   (
     cd "$TMPDIR"
     npm pack --silent "@shoelace-style/shoelace@${SHOELACE_VERSION}" > /dev/null
+    # npm pack per pacchetti scoped: @scope/name -> scope-name-VERSION.tgz
     tar -xzf "shoelace-style-shoelace-${SHOELACE_VERSION}.tgz"
   )
+  [[ -d "${TMPDIR}/package/cdn" ]] || { echo "[error] cdn/ non trovato nel tarball Shoelace"; exit 1; }
   mkdir -p "$SL_DEST"
   cp -R "${TMPDIR}/package/cdn/." "$SL_DEST/"
   echo "[ok]   $SL_DEST (cartella cdn/)"
