@@ -1,0 +1,45 @@
+-- ============================================================
+-- promote-super-admin.sql.example
+-- ============================================================
+-- Script UNA TANTUM per creare il primo super_admin del sistema.
+--
+-- Prerequisiti (in ordine):
+--   1. Applicato sql/schema.sql sul progetto Supabase.
+--   2. Applicato sql/rls.sql sul progetto Supabase.
+--   3. Registrato manualmente l'utente in Supabase Auth con
+--      email + password, dalla dashboard del progetto:
+--      Auth -> Users -> Add user -> annota l'UUID generato.
+--
+-- Uso:
+--   1. Copia questo file come "promote-super-admin.sql"
+--      (senza il suffisso .example). Il .gitignore esclude
+--      la copia con i valori reali: NON committarla.
+--   2. Sostituisci i placeholder <UUID-DA-AUTH-USERS>, <NOME>,
+--      <COGNOME> con i valori veri.
+--   3. Esegui il file modificato nello SQL Editor di Supabase.
+--   4. Verifica con la SELECT in fondo.
+--
+-- Nota: questo script bypassa la matrice RLS perche' viene
+-- eseguito come supabase_admin (proprietario delle tabelle,
+-- anche se RLS e' FORCE: il proprietario puo' eseguire DDL e
+-- DML privilegiati nello SQL Editor). In produzione gli admin
+-- successivi vengono creati invece via Edge Function privilegiata
+-- chiamata da un super_admin gia' loggato.
+-- ============================================================
+
+insert into public.profiles (
+  id,
+  first_name,
+  last_name,
+  role
+) values (
+  '<UUID-DA-AUTH-USERS>'::uuid,
+  '<NOME>',
+  '<COGNOME>',
+  'super_admin'
+);
+
+-- verifica:
+select id, first_name, last_name, role, created_at
+  from public.profiles
+ where role = 'super_admin';
