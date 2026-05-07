@@ -17,7 +17,6 @@ SHOELACE_VERSION="2.20.1"
 JSDELIVR="https://cdn.jsdelivr.net/npm"
 
 command -v curl >/dev/null 2>&1 || { echo "[error] curl richiesto"; exit 1; }
-command -v npm  >/dev/null 2>&1 || { echo "[error] npm richiesto per Shoelace (npm pack)"; exit 1; }
 command -v tar  >/dev/null 2>&1 || { echo "[error] tar richiesto per Shoelace"; exit 1; }
 
 download_file() {
@@ -57,20 +56,17 @@ download_file \
   "${JSDELIVR}/qrcode@${QRCODE_VERSION}/lib/browser.min.js" \
   "${VENDOR_ROOT}/qrcode/${QRCODE_VERSION}/qrcode.min.js"
 
-# 6. Shoelace -- intera cartella cdn/ via npm pack
+# 6. Shoelace -- intera cartella cdn/ via tarball npm registry (no npm CLI)
 SL_DEST="${VENDOR_ROOT}/shoelace/${SHOELACE_VERSION}"
 if [[ -d "$SL_DEST" && -f "${SL_DEST}/shoelace-autoloader.js" ]]; then
   echo "[skip] $SL_DEST gia presente"
 else
-  echo "[..]   Shoelace via npm pack..."
+  echo "[..]   Shoelace via tarball npm registry..."
   TMPDIR=$(mktemp -d)
   trap 'rm -rf "$TMPDIR"' EXIT
-  (
-    cd "$TMPDIR"
-    npm pack --silent "@shoelace-style/shoelace@${SHOELACE_VERSION}" > /dev/null
-    # npm pack per pacchetti scoped: @scope/name -> scope-name-VERSION.tgz
-    tar -xzf "shoelace-style-shoelace-${SHOELACE_VERSION}.tgz"
-  )
+  TARBALL_URL="https://registry.npmjs.org/@shoelace-style/shoelace/-/shoelace-${SHOELACE_VERSION}.tgz"
+  curl -fsSL "$TARBALL_URL" -o "${TMPDIR}/shoelace.tgz"
+  tar -xzf "${TMPDIR}/shoelace.tgz" -C "${TMPDIR}"
   [[ -d "${TMPDIR}/package/cdn" ]] || { echo "[error] cdn/ non trovato nel tarball Shoelace"; exit 1; }
   mkdir -p "$SL_DEST"
   cp -R "${TMPDIR}/package/cdn/." "$SL_DEST/"
