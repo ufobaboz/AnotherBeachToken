@@ -55,9 +55,22 @@ download_file \
 # pubblica un UMD browser standalone: lib/browser.js e' un wrapper
 # che richiede un bundler. Il bundle ESM auto-generato da jsdelivr
 # (rollup+terser) e' pronto per <script type="module">.
+# Il bundle ha 1 dipendenza esterna runtime su /npm/dijkstrajs@1.0.3/+esm
+# che noi NON serviamo: la self-hostiamo come dijkstrajs.js a fianco e
+# patchiamo l'import path nel bundle a /vendor/qrcode/<v>/dijkstrajs.js.
+DIJKSTRA_VERSION="1.0.3"
 download_file \
   "${JSDELIVR}/qrcode@${QRCODE_VERSION}/+esm" \
   "${VENDOR_ROOT}/qrcode/${QRCODE_VERSION}/qrcode.esm.min.js"
+download_file \
+  "${JSDELIVR}/dijkstrajs@${DIJKSTRA_VERSION}/+esm" \
+  "${VENDOR_ROOT}/qrcode/${QRCODE_VERSION}/dijkstrajs.js"
+# Patch idempotente: sostituisci l'import esterno se presente
+QRCODE_BUNDLE="${VENDOR_ROOT}/qrcode/${QRCODE_VERSION}/qrcode.esm.min.js"
+if grep -q '/npm/dijkstrajs@' "$QRCODE_BUNDLE"; then
+  sed -i "s|from\"/npm/dijkstrajs@${DIJKSTRA_VERSION}/+esm\"|from\"/vendor/qrcode/${QRCODE_VERSION}/dijkstrajs.js\"|g" "$QRCODE_BUNDLE"
+  echo "[ok]   patched qrcode bundle import dijkstrajs -> /vendor/qrcode/${QRCODE_VERSION}/dijkstrajs.js"
+fi
 
 # 6. Shoelace -- intera cartella cdn/ via tarball npm registry (no npm CLI)
 SL_DEST="${VENDOR_ROOT}/shoelace/${SHOELACE_VERSION}"

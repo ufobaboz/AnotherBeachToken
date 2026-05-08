@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Clienti -- Customer QR Tracker</title>
   <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
   <script src="/assets/config.js"></script>
   <script src="/assets/strings.js"></script>
@@ -12,8 +13,8 @@
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
-    nav.app-nav { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--pico-muted-border-color); }
-    nav.app-nav h1 { margin: 0; font-size: 1.1rem; }
+    .actions-bar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .actions-bar input { flex: 1; margin: 0; min-width: 12rem; }
   </style>
 </head>
 <body x-cloak x-data="customersPage" x-init="init()">
@@ -21,26 +22,78 @@
     <h1 x-text="t.customers.title"></h1>
     <button class="secondary" @click="logout()" x-text="t.logout"></button>
   </nav>
-
   <main class="container">
-    <article>
-      <p x-text="t.customers.empty"></p>
+    <div class="actions-bar">
+      <input type="search" x-model="query" :placeholder="t.customers.searchPlaceholder"
+             @input.debounce.250ms="onSearch()">
+      <a href="/customers/new" role="button" x-text="t.customers.newButton"></a>
+    </div>
+    <article x-show="!loading && filtered.length === 0" x-cloak>
+      <p x-text="query ? t.customers.emptySearch : t.customers.empty"></p>
     </article>
+    <table x-show="filtered.length > 0" x-cloak>
+      <thead>
+        <tr>
+          <th x-text="t.customers.columnName"></th>
+          <th x-text="t.customers.columnPhone"></th>
+          <th x-text="t.customers.columnCreatedAt"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="c in filtered" :key="c.id">
+          <tr>
+            <td><a :href="'/customers/' + c.id" x-text="c.last_name + ' ' + c.first_name"></a></td>
+            <td x-text="c.phone"></td>
+            <td x-text="formatDate(c.created_at)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
   </main>
-
   <script>
     document.addEventListener('alpine:init', function () {
       Alpine.data('customersPage', function () {
         return {
           t: window.Strings,
+          loading: true,
+          all: [],
+          filtered: [],
+          query: '',
           async init() {
             var session = await window.Auth.requireAuth();
-            if (!session) return; // redirect gia' avvenuto
+            if (!session) return;
             document.body.removeAttribute('x-cloak');
+            await this.loadAll();
+            this.loading = false;
           },
-          async logout() {
-            await window.Auth.signOut();
-          }
+          async loadAll() {
+            var resp = await window.Auth.client.from('customers')
+              .select('id, first_name, last_name, phone, created_at')
+              .is('deleted_at', null)
+              .order('last_name', { ascending: true })
+              .order('first_name', { ascending: true });
+            if (resp.error) {
+              console.error('[customers] loadAll error', resp.error);
+              this.all = [];
+            } else {
+              this.all = resp.data || [];
+            }
+            this.filtered = this.all.slice();
+          },
+          onSearch() {
+            var q = (this.query || '').trim().toLowerCase();
+            if (!q) { this.filtered = this.all.slice(); return; }
+            this.filtered = this.all.filter(function (c) {
+              return (c.first_name + ' ' + c.last_name + ' ' + c.last_name + ' ' + c.first_name + ' ' + c.phone).toLowerCase().indexOf(q) !== -1;
+            });
+          },
+          formatDate(iso) {
+            try {
+              var d = new Date(iso);
+              return d.toLocaleDateString('it-IT');
+            } catch (e) { return iso; }
+          },
+          async logout() { await window.Auth.signOut(); }
         };
       });
     });

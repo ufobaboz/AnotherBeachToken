@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nuovo cliente -- Customer QR Tracker</title>
+  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script src="/assets/qr-token.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+<body x-cloak x-data="customerNewPage" x-init="init()">
+  <nav class="app-nav">
+    <h1 x-text="t.customerNew.title"></h1>
+    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+  </nav>
+  <main class="container">
+    <a href="/customers" x-text="t.customerNew.backToList"></a>
+    <form @submit.prevent="submit()">
+      <label>
+        <span x-text="t.customerNew.firstName"></span>
+        <input type="text" x-model="form.first_name" required maxlength="120" :disabled="submitting">
+      </label>
+      <label>
+        <span x-text="t.customerNew.lastName"></span>
+        <input type="text" x-model="form.last_name" required maxlength="120" :disabled="submitting">
+      </label>
+      <label>
+        <span x-text="t.customerNew.phone"></span>
+        <input type="tel" x-model="form.phone" required :placeholder="t.customerNew.phonePlaceholder"
+               :aria-invalid="phoneError" :disabled="submitting">
+        <small x-show="phoneError" x-cloak x-text="t.customerNew.invalidPhone"></small>
+      </label>
+      <label>
+        <span x-text="t.customerNew.email"></span>
+        <input type="email" x-model="form.email" maxlength="200" :disabled="submitting">
+      </label>
+      <label>
+        <span x-text="t.customerNew.notes"></span>
+        <textarea x-model="form.notes" rows="3" :disabled="submitting"></textarea>
+      </label>
+      <button type="submit" :aria-busy="submitting" :disabled="submitting">
+        <span x-text="submitting ? t.customerNew.submitting : t.customerNew.submit"></span>
+      </button>
+    </form>
+    <article x-show="error" x-cloak role="alert">
+      <p x-text="error"></p>
+    </article>
+  </main>
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('customerNewPage', function () {
+        return {
+          t: window.Strings,
+          session: null,
+          form: { first_name: '', last_name: '', phone: '', email: '', notes: '' },
+          submitting: false,
+          phoneError: false,
+          error: null,
+          async init() {
+            var session = await window.Auth.requireAuth();
+            if (!session) return;
+            this.session = session;
+            document.body.removeAttribute('x-cloak');
+          },
+          normalizePhone(raw) {
+            // Strip caratteri non-numerici tranne il +.
+            var s = (raw || '').replace(/[^0-9+]/g, '');
+            // Solo un + e solo all'inizio.
+            s = s.replace(/\+/g, function (m, off) { return off === 0 ? m : ''; });
+            // Aggiungi + se mancante e ci sono almeno 9 cifre.
+            if (!s.startsWith('+') && s.length >= 9) s = '+' + s;
+            return s;
+          },
+          isPhoneValid(normalized) {
+            return /^\+[0-9]{8,15}$/.test(normalized);
+          },
+          async submit() {
+            if (this.submitting) return;
+            this.error = null;
+            this.phoneError = false;
+            var phone = this.normalizePhone(this.form.phone);
+            if (!this.isPhoneValid(phone)) {
+              this.phoneError = true;
+              return;
+            }
+            this.submitting = true;
+            if (!this.session) { window.location.replace('/login'); return; }
+            var userId = this.session.user.id;
+            var payload = {
+              qr_token: window.generateQrToken(),
+              first_name: this.form.first_name.trim(),
+              last_name:  this.form.last_name.trim(),
+              phone:      phone,
+              email:      (this.form.email || '').trim() || null,
+              notes:      (this.form.notes || '').trim() || null,
+              created_by_id: userId
+            };
+            var resp = await window.Auth.client.from('customers').insert(payload).select('id').single();
+            if (resp.error) {
+              console.error('[customer-new] insert error', resp.error);
+              this.error = this.t.customerNew.error;
+              this.submitting = false;
+              return;
+            }
+            window.location.replace('/customers/' + resp.data.id);
+          },
+          async logout() { await window.Auth.signOut(); }
+        };
+      });
+    });
+  </script>
+</body>
+</html>
