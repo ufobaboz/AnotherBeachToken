@@ -1,0 +1,14 @@
+/* repo/public/assets/app.css
+   Stili condivisi fra le pagine autenticate. Niente <nav class="app-nav">
+   inline duplicato. */
+nav.app-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+nav.app-nav h1 {
+  margin: 0;
+  font-size: 1.1rem;
+}
