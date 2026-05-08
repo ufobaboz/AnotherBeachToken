@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Il tuo QR -- Customer QR Tracker</title>
+  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    main.container { max-width: 28rem; margin-top: 3rem; text-align: center; }
+    img.qr-image { max-width: 280px; margin: 1rem auto; image-rendering: pixelated; }
+    .balance { font-size: 1.4rem; margin-top: 1rem; }
+  </style>
+</head>
+<body x-cloak x-data="qrPublicPage" x-init="init()">
+  <main class="container">
+    <article x-show="notFound" x-cloak><p x-text="t.qrPublic.notFound"></p></article>
+    <template x-if="info">
+      <div>
+        <h1 x-text="t.qrPublic.greeting(info.first_name)"></h1>
+        <img class="qr-image" :src="qrDataUrl" :alt="t.qrPublic.qrAlt">
+        <p class="balance">
+          <strong x-text="t.qrPublic.openBalanceLabel"></strong>:
+          <span x-text="formatBalance(info.open_balance) + ' ' + t.qrPublic.currency"></span>
+        </p>
+      </div>
+    </template>
+  </main>
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('qrPublicPage', function () {
+        return {
+          t: window.Strings,
+          info: null,
+          notFound: false,
+          qrDataUrl: '',
+          async init() {
+            document.body.removeAttribute('x-cloak');
+            var match = location.pathname.match(/^\/qr\/([A-Z2-7]{32})\/?$/);
+            if (!match) { this.notFound = true; return; }
+            var token = match[1];
+            var anonClient = window.supabase.createClient(
+              window.APP_CONFIG.SUPABASE_URL,
+              window.APP_CONFIG.SUPABASE_ANON_KEY,
+              { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+            );
+            var resp = await anonClient.rpc('get_customer_qr_info', { p_token: token });
+            if (resp.error) {
+              console.error('[qr-public] rpc error', resp.error);
+              this.notFound = true;
+              return;
+            }
+            var rows = resp.data || [];
+            if (rows.length === 0) { this.notFound = true; return; }
+            this.info = rows[0];
+            try {
+              var QRCodeModule = await import('/vendor/qrcode/1.5.4/qrcode.esm.min.js');
+              var QRCode = QRCodeModule.default || QRCodeModule;
+              this.qrDataUrl = await QRCode.toDataURL(window.location.href, { width: 360, margin: 2 });
+            } catch (e) {
+              console.error('[qr-public] qr generation failed', e);
+            }
+          },
+          formatBalance(n) {
+            try {
+              return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            } catch (e) { return String(n); }
+          }
+        };
+      });
+    });
+  </script>
+</body>
+</html>

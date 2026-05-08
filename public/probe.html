@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Probe -- Customer QR Tracker</title>
   <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
   <script src="/assets/config.js"></script>
   <script src="/assets/strings.js"></script>
@@ -12,8 +13,6 @@
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
-    nav.app-nav { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--pico-muted-border-color); }
-    nav.app-nav h1 { margin: 0; font-size: 1.1rem; }
     .check { margin-bottom: 0.75rem; }
     .badge { display: inline-block; min-width: 3rem; text-align: center; padding: 0.1rem 0.5rem; border-radius: 0.2rem; font-family: monospace; font-size: 0.85rem; margin-right: 0.5rem; }
     .badge-ok   { background: #1c5d31; color: #fff; }
@@ -163,16 +162,27 @@
           async checkCounts() {
             var c = window.Auth.client;
             var p = await c.from('profiles').select('*', { count: 'exact', head: true });
-            var cu = await c.from('customers').select('*', { count: 'exact', head: true });
+            var cuActive   = await c.from('customers').select('*', { count: 'exact', head: true })
+                                    .is('deleted_at', null);
+            var cuDeleted  = await c.from('customers').select('*', { count: 'exact', head: true })
+                                    .not('deleted_at', 'is', null);
             var t = await c.from('transactions').select('*', { count: 'exact', head: true });
-            var failures = [p, cu, t].filter(function (r) { return r.error; });
+            var failures = [p, cuActive, cuDeleted, t].filter(function (r) { return r.error; });
             if (failures.length > 0) {
-              return { status: 'FAIL', summary: failures[0].error.message, details: { p: p.error, cu: cu.error, t: t.error } };
+              return { status: 'FAIL', summary: failures[0].error.message,
+                       details: { p: p.error, cuActive: cuActive.error, cuDeleted: cuDeleted.error, t: t.error } };
             }
             return {
               status: 'OK',
-              summary: 'profiles=' + p.count + ', customers=' + cu.count + ', transactions=' + t.count,
-              details: { profiles: p.count, customers: cu.count, transactions: t.count }
+              summary: 'profiles=' + p.count
+                     + ', customers=' + cuActive.count + ' attivi/' + cuDeleted.count + ' cancellati'
+                     + ', transactions=' + t.count,
+              details: {
+                profiles: p.count,
+                customers_active: cuActive.count,
+                customers_deleted: cuDeleted.count,
+                transactions: t.count
+              }
             };
           },
           async logout() {

@@ -11,6 +11,7 @@
 // - Auth.redirectIfAuthenticated(): redirect /customers se gia' loggato
 // - Auth.requireSuperAdmin(): redirect /customers se role != super_admin
 // - Auth.callAuthPing({stamp}): chiama edge function auth-ping
+// - Auth.getRole(): ritorna il role corrente (cached), null se anon o errore
 (function () {
   if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
     console.error('[auth] APP_CONFIG mancante: build.sh non ha iniettato le env vars.');
@@ -30,6 +31,8 @@
       detectSessionInUrl: false
     }
   });
+
+  var cachedRole = null;
 
   function mapSignInError(err) {
     if (!err) return 'unknown';
@@ -73,7 +76,21 @@
       window.location.replace('/customers');
       return null;
     }
+    cachedRole = resp.data.role;
     return session;
+  }
+
+  async function getRole() {
+    if (cachedRole !== null) return cachedRole;
+    var session = await getSession();
+    if (!session) return null;
+    var resp = await client.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+    if (resp.error || !resp.data) {
+      console.warn('[auth] getRole: profile lookup failed', resp.error);
+      return null;
+    }
+    cachedRole = resp.data.role;
+    return cachedRole;
   }
 
   async function callAuthPing(opts) {
@@ -113,6 +130,7 @@
   }
 
   async function signOut() {
+    cachedRole = null;
     try {
       await client.auth.signOut();
     } catch (e) {
@@ -128,6 +146,7 @@
     requireAuth: requireAuth,
     redirectIfAuthenticated: redirectIfAuthenticated,
     requireSuperAdmin: requireSuperAdmin,
+    getRole: getRole,
     callAuthPing: callAuthPing
   };
 })();

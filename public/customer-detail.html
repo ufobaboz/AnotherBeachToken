@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dettaglio cliente -- Customer QR Tracker</title>
+  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script type="module" src="/vendor/shoelace/2.20.1/components/dialog/dialog.js"></script>
+  <script type="module" src="/vendor/shoelace/2.20.1/components/button/button.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .actions-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    dl.anagrafica dt { font-weight: bold; margin-top: 0.5rem; }
+    dl.anagrafica dd { margin-left: 0; }
+    img.qr-preview { max-width: 200px; image-rendering: pixelated; }
+  </style>
+</head>
+<body x-cloak x-data="customerDetailPage" x-init="init()">
+  <nav class="app-nav">
+    <h1 x-text="t.customerDetail.title"></h1>
+    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+  </nav>
+  <main class="container">
+    <a href="/customers" x-text="t.customerDetail.backToList"></a>
+
+    <article x-show="notFound" x-cloak><p x-text="t.customerDetail.notFound"></p></article>
+
+    <template x-if="customer">
+      <div>
+        <h2 x-text="customer.last_name + ' ' + customer.first_name"></h2>
+
+        <div class="actions-bar">
+          <a :href="qrDataUrl" :download="qrFileName" role="button" x-show="qrDataUrl" x-cloak
+             x-text="t.customerDetail.downloadQr"></a>
+          <a :href="whatsappQrUrl" target="_blank" rel="noopener" role="button"
+             class="secondary" x-text="t.customerDetail.sendQrWhatsApp"></a>
+          <button class="contrast" @click="openDeleteDialog()" x-show="canDelete" x-cloak
+                  x-text="t.customerDetail.deleteButton"></button>
+        </div>
+
+        <h3 x-text="t.customerDetail.sectionAnagrafica"></h3>
+        <dl class="anagrafica">
+          <dt x-text="t.customerNew.firstName"></dt>
+          <dd x-text="customer.first_name"></dd>
+          <dt x-text="t.customerNew.lastName"></dt>
+          <dd x-text="customer.last_name"></dd>
+          <dt x-text="t.customerNew.phone"></dt>
+          <dd x-text="customer.phone"></dd>
+          <dt x-text="t.customerNew.email"></dt>
+          <dd x-text="customer.email || '-'"></dd>
+          <dt x-text="t.customerNew.notes"></dt>
+          <dd x-text="customer.notes || '-'"></dd>
+          <dt x-text="t.customerDetail.createdAt"></dt>
+          <dd x-text="formatDate(customer.created_at)"></dd>
+        </dl>
+
+        <img class="qr-preview" :src="qrDataUrl" :alt="t.customerDetail.qrAlt" x-show="qrDataUrl" x-cloak>
+
+        <h3 x-text="t.customerDetail.sectionTransactions"></h3>
+        <article><p x-text="t.customerDetail.transactionsStub"></p></article>
+      </div>
+    </template>
+
+    <sl-dialog x-ref="deleteDialog" :label="t.customerDetail.deleteDialogTitle">
+      <p x-text="customer ? t.customerDetail.deleteDialogBody(customer.first_name, customer.last_name) : ''"></p>
+      <sl-button slot="footer" variant="default" @click="closeDeleteDialog()"
+                 x-text="t.customerDetail.deleteDialogCancel"></sl-button>
+      <sl-button slot="footer" variant="danger" @click="confirmDelete()" :loading="deleting"
+                 x-text="t.customerDetail.deleteDialogConfirm"></sl-button>
+    </sl-dialog>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('customerDetailPage', function () {
+        return {
+          t: window.Strings,
+          customer: null,
+          notFound: false,
+          canDelete: false,
+          deleting: false,
+          qrDataUrl: '',
+          qrFileName: '',
+          whatsappQrUrl: '',
+          async init() {
+            var session = await window.Auth.requireAuth();
+            if (!session) return;
+            document.body.removeAttribute('x-cloak');
+            var match = location.pathname.match(/^\/customers\/([0-9a-f-]{36})\/?$/);
+            if (!match) { this.notFound = true; return; }
+            var id = match[1];
+            var resp = await window.Auth.client.from('customers').select('*').eq('id', id).is('deleted_at', null).maybeSingle();
+            if (resp.error || !resp.data) {
+              this.notFound = true;
+              return;
+            }
+            this.customer = resp.data;
+            await this.computeQr();
+            this.computeWhatsApp();
+            var role = await window.Auth.getRole();
+            this.canDelete = (role === 'admin' || role === 'super_admin');
+          },
+          async computeQr() {
+            var publicUrl = window.location.origin + '/qr/' + this.customer.qr_token;
+            try {
+              var QRCodeModule = await import('/vendor/qrcode/1.5.4/qrcode.esm.min.js');
+              var QRCode = QRCodeModule.default || QRCodeModule;
+              var dataUrl = await QRCode.toDataURL(publicUrl, { width: 320, margin: 2 });
+              this.qrDataUrl = dataUrl;
+              this.qrFileName = 'qr-' + this.customer.last_name + '-' + this.customer.first_name + '.png';
+            } catch (e) {
+              console.error('[detail] qr generation failed', e);
+            }
+          },
+          computeWhatsApp() {
+            var publicUrl = window.location.origin + '/qr/' + this.customer.qr_token;
+            var phoneNoPlus = (this.customer.phone || '').replace(/^\+/, '');
+            var text = this.t.customerDetail.qrWhatsAppText(this.customer.first_name, publicUrl);
+            this.whatsappQrUrl = 'https://wa.me/' + phoneNoPlus + '?text=' + encodeURIComponent(text);
+          },
+          openDeleteDialog() { this.$refs.deleteDialog.show(); },
+          closeDeleteDialog() { this.$refs.deleteDialog.hide(); },
+          async confirmDelete() {
+            if (this.deleting) return;
+            this.deleting = true;
+            var resp = await window.Auth.client.from('customers')
+              .update({ deleted_at: new Date().toISOString() })
+              .eq('id', this.customer.id);
+            this.deleting = false;
+            if (resp.error) {
+              console.error('[detail] soft-delete failed', resp.error);
+              alert(this.t.customerDetail.deleteError);
+              return;
+            }
+            window.location.replace('/customers');
+          },
+          formatDate(iso) {
+            try { return new Date(iso).toLocaleString('it-IT'); } catch (e) { return iso; }
+          },
+          async logout() { await window.Auth.signOut(); }
+        };
+      });
+    });
+  </script>
+</body>
+</html>
