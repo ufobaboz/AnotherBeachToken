@@ -166,22 +166,38 @@
                                     .is('deleted_at', null);
             var cuDeleted  = await c.from('customers').select('*', { count: 'exact', head: true })
                                     .not('deleted_at', 'is', null);
-            var t = await c.from('transactions').select('*', { count: 'exact', head: true });
-            var failures = [p, cuActive, cuDeleted, t].filter(function (r) { return r.error; });
+            var txChargeOpen   = await c.from('transactions').select('*', { count: 'exact', head: true })
+                                        .eq('type', 'charge').eq('paid', false).is('deleted_at', null);
+            var txChargePaid   = await c.from('transactions').select('*', { count: 'exact', head: true })
+                                        .eq('type', 'charge').eq('paid', true).is('deleted_at', null);
+            var txReversalOpen = await c.from('transactions').select('*', { count: 'exact', head: true })
+                                        .eq('type', 'reversal').eq('paid', false).is('deleted_at', null);
+            var txReversalPaid = await c.from('transactions').select('*', { count: 'exact', head: true })
+                                        .eq('type', 'reversal').eq('paid', true).is('deleted_at', null);
+            var all = [p, cuActive, cuDeleted, txChargeOpen, txChargePaid, txReversalOpen, txReversalPaid];
+            var failures = all.filter(function (r) { return r.error; });
             if (failures.length > 0) {
               return { status: 'FAIL', summary: failures[0].error.message,
-                       details: { p: p.error, cuActive: cuActive.error, cuDeleted: cuDeleted.error, t: t.error } };
+                       details: {
+                         p: p.error, cuActive: cuActive.error, cuDeleted: cuDeleted.error,
+                         txChargeOpen: txChargeOpen.error, txChargePaid: txChargePaid.error,
+                         txReversalOpen: txReversalOpen.error, txReversalPaid: txReversalPaid.error
+                       } };
             }
             return {
               status: 'OK',
               summary: 'profiles=' + p.count
                      + ', customers=' + cuActive.count + ' attivi/' + cuDeleted.count + ' cancellati'
-                     + ', transactions=' + t.count,
+                     + ', transactions: charges ' + txChargeOpen.count + ' aperti/' + txChargePaid.count + ' saldati'
+                     + ', reversals ' + txReversalOpen.count + ' aperti/' + txReversalPaid.count + ' saldati',
               details: {
                 profiles: p.count,
                 customers_active: cuActive.count,
                 customers_deleted: cuDeleted.count,
-                transactions: t.count
+                charges_open: txChargeOpen.count,
+                charges_paid: txChargePaid.count,
+                reversals_open: txReversalOpen.count,
+                reversals_paid: txReversalPaid.count
               }
             };
           },
