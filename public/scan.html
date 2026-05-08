@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scansiona QR -- Customer QR Tracker</title>
+  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script src="/vendor/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .qr-reader { width: 100%; max-width: 28rem; margin: 1rem auto; }
+  </style>
+</head>
+<body x-cloak x-data="scanPage" x-init="init()">
+  <nav class="app-nav">
+    <h1 x-text="t.scan.title"></h1>
+    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+  </nav>
+  <main class="container">
+    <div id="reader" class="qr-reader" x-show="!error" x-cloak></div>
+    <article x-show="error" x-cloak role="alert">
+      <p x-text="error"></p>
+      <a href="/customers" role="button" class="secondary" x-text="t.scan.backToList"></a>
+    </article>
+  </main>
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('scanPage', function () {
+        return {
+          t: window.Strings,
+          session: null,
+          error: null,
+          processing: false,
+          qr: null,
+          async init() {
+            var session = await window.Auth.requireAuth();
+            if (!session) return;
+            document.body.removeAttribute('x-cloak');
+            this.session = session;
+            await this.startCamera();
+          },
+          async startCamera() {
+            try {
+              this.qr = new window.Html5Qrcode('reader');
+              await this.qr.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                this.onDecode.bind(this),
+                function () {}
+              );
+            } catch (e) {
+              console.error('[scan] camera start failed', e);
+              this.error = this.t.scan.cameraDenied;
+            }
+          },
+          async onDecode(decoded) {
+            if (this.processing) return;
+            this.processing = true;
+            var match = (decoded || '').match(/[A-Z2-7]{32}/);
+            if (!match) {
+              this.error = this.t.scan.invalidQr;
+              await this.stopCamera();
+              return;
+            }
+            var token = match[0];
+            var resp = await window.Auth.client.from('customers')
+              .select('id').eq('qr_token', token).is('deleted_at', null).maybeSingle();
+            if (resp.error || !resp.data) {
+              console.warn('[scan] token not found', token);
+              this.error = this.t.scan.notFound;
+              await this.stopCamera();
+              return;
+            }
+            await this.stopCamera();
+            window.location.replace('/customers/' + resp.data.id + '?charge=1');
+          },
+          async stopCamera() {
+            try { if (this.qr) await this.qr.stop(); } catch (e) {}
+          },
+          async logout() { await window.Auth.signOut(); }
+        };
+      });
+    });
+  </script>
+</body>
+</html>
