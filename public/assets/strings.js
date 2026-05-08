@@ -47,7 +47,6 @@ window.Strings = {
     notFound: 'Cliente non trovato.',
     sectionAnagrafica: 'Anagrafica',
     sectionTransactions: 'Movimenti',
-    transactionsStub: 'Sezione movimenti attiva da M4.',
     createdAt: 'Registrato il',
     qrAlt: 'QR code del cliente',
     downloadQr: 'Scarica QR',
@@ -63,7 +62,40 @@ window.Strings = {
     },
     deleteDialogConfirm: 'Cancella',
     deleteDialogCancel: 'Annulla',
-    deleteError: 'Errore in fase di cancellazione. Riprova.'
+    deleteError: 'Errore in fase di cancellazione. Riprova.',
+    transactions: {
+      empty: 'Nessun movimento registrato.',
+      descCharge: function (amount) { return 'Addebito ' + amount + ' EUR'; },
+      descReversal: function (amount) { return 'Storno addebito ' + amount + ' EUR'; },
+      badgeAperto: 'APERTO',
+      badgeStornato: 'STORNATO',
+      badgeSaldato: 'SALDATO'
+    },
+    balance: {
+      label: 'Saldo aperto',
+      sendWhatsApp: 'Invia saldo su WhatsApp',
+      whatsAppText: function (firstName, balanceFormatted, publicUrl) {
+        return 'Ciao ' + firstName + ', il tuo saldo aperto e\' ' + balanceFormatted + ' EUR. Visualizzalo qui: ' + publicUrl;
+      }
+    },
+    charge: {
+      ctaNew: '+ Nuovo addebito',
+      submit: 'ADDEBITA',
+      submitting: 'Addebito in corso...',
+      cancel: 'Vedi storia',
+      backspaceLabel: 'Cancella ultima cifra',
+      error: 'Errore in fase di addebito. Riprova.'
+    },
+    reversal: {
+      button: 'Storna',
+      dialogTitle: 'Confermare storno',
+      dialogBody: function (amount, time) {
+        return 'Storno di ' + amount + ' EUR dell\'addebito delle ' + time + '? Questa azione non e\' reversibile.';
+      },
+      cancel: 'Annulla',
+      confirm: 'Conferma storno',
+      error: 'Errore in fase di storno. Riprova.'
+    }
   },
   qrPublic: {
     greeting: function (firstName) { return 'Ciao ' + firstName; },
@@ -71,6 +103,13 @@ window.Strings = {
     qrAlt: 'Il tuo QR code',
     openBalanceLabel: 'Saldo aperto',
     currency: 'EUR'
+  },
+  scan: {
+    title: 'Scansiona QR',
+    cameraDenied: 'Permesso camera negato. Concedi accesso alla telecamera per scansionare.',
+    invalidQr: 'QR non valido. Inquadra un QR cliente.',
+    notFound: 'QR non riconosciuto. Cliente inesistente o cancellato.',
+    backToList: 'Torna alla lista'
   },
   logout: 'Esci',
   probe: {

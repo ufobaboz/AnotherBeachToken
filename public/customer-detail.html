@@ -20,6 +20,68 @@
     dl.anagrafica dt { font-weight: bold; margin-top: 0.5rem; }
     dl.anagrafica dd { margin-left: 0; }
     img.qr-preview { max-width: 200px; image-rendering: pixelated; }
+    .balance-card {
+      padding: 0.75rem 1rem;
+      background: var(--pico-card-background-color);
+      border-radius: 0.4rem;
+      margin-bottom: 0.75rem;
+      font-size: 1.1rem;
+    }
+    ul.transactions { list-style: none; padding: 0; margin: 0; }
+    li.tx {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 0.25rem 0.75rem;
+      padding: 0.6rem 0.4rem;
+      border-bottom: 1px solid var(--pico-muted-border-color);
+    }
+    li.tx-reversed .tx-desc { text-decoration: line-through; opacity: 0.6; }
+    .tx-time { font-size: 0.85rem; color: var(--pico-muted-color); }
+    .tx-action { grid-column: 1 / -1; text-align: right; }
+    .tx-storna-btn { padding: 0.25rem 0.75rem; font-size: 0.85rem; margin: 0; }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.5rem;
+      border-radius: 0.2rem;
+      font-family: monospace;
+      font-size: 0.75rem;
+    }
+    .badge-aperto  { background: #f3a712; color: #fff; }
+    .badge-storno  { background: #555;    color: #fff; }
+    .badge-saldato { background: #1c5d31; color: #fff; }
+    .pos-cta-inline {
+      width: 100%;
+      margin-bottom: 1rem;
+      font-size: 1.1rem;
+      padding: 0.75rem;
+    }
+    .pos-overlay {
+      position: fixed; inset: 0; z-index: 1000;
+      background: var(--pico-background-color);
+      display: flex; flex-direction: column;
+      padding: 1rem;
+    }
+    .pos-header { text-align: center; padding-bottom: 0.5rem; border-bottom: 1px solid var(--pico-muted-border-color); }
+    .pos-customer { font-size: 1.1rem; font-weight: bold; }
+    .pos-balance { font-size: 0.9rem; color: var(--pico-muted-color); }
+    .pos-display {
+      font-size: clamp(2.5rem, 12vw, 4rem);
+      font-weight: bold; text-align: center;
+      padding: 1.5rem 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .pos-keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+    }
+    .pos-keypad button {
+      min-height: 3.5rem; font-size: 1.5rem; margin: 0;
+    }
+    .pos-actions { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .pos-cta { width: 100%; font-size: 1.2rem; padding: 1rem; margin: 0; }
+    .pos-error { color: #b91c1c; margin-top: 0.5rem; text-align: center; }
   </style>
 </head>
 <body x-cloak x-data="customerDetailPage" x-init="init()">
@@ -41,6 +103,8 @@
              x-text="t.customerDetail.downloadQr"></a>
           <a :href="whatsappQrUrl" target="_blank" rel="noopener" role="button"
              class="secondary" x-text="t.customerDetail.sendQrWhatsApp"></a>
+          <a :href="whatsappBalanceUrl" target="_blank" rel="noopener" role="button"
+             class="secondary" x-text="t.customerDetail.balance.sendWhatsApp"></a>
           <button class="contrast" @click="openDeleteDialog()" x-show="canDelete" x-cloak
                   x-text="t.customerDetail.deleteButton"></button>
         </div>
@@ -64,9 +128,73 @@
         <img class="qr-preview" :src="qrDataUrl" :alt="t.customerDetail.qrAlt" x-show="qrDataUrl" x-cloak>
 
         <h3 x-text="t.customerDetail.sectionTransactions"></h3>
-        <article><p x-text="t.customerDetail.transactionsStub"></p></article>
+        <div class="balance-card">
+          <strong x-text="t.customerDetail.balance.label"></strong>:
+          <span x-text="formatBalance(openBalance) + ' EUR'"></span>
+        </div>
+        <button class="primary pos-cta-inline" @click="openPos()" x-text="t.customerDetail.charge.ctaNew"></button>
+
+        <article x-show="transactions.length === 0" x-cloak>
+          <p x-text="t.customerDetail.transactions.empty"></p>
+        </article>
+
+        <ul class="transactions" x-show="transactions.length > 0" x-cloak>
+          <template x-for="tx in transactions" :key="tx.id">
+            <li class="tx" :class="txCssClass(tx)">
+              <div class="tx-time" x-text="formatTxTime(tx.created_at)"></div>
+              <div class="tx-desc" x-text="describeTx(tx)"></div>
+              <div class="tx-state">
+                <span class="badge" :class="badgeClass(tx)" x-text="badgeText(tx)"></span>
+              </div>
+              <div class="tx-action" x-show="canReverse(tx)" x-cloak>
+                <button class="contrast outline tx-storna-btn"
+                        @click="openReversalDialog(tx)"
+                        x-text="t.customerDetail.reversal.button"></button>
+              </div>
+            </li>
+          </template>
+        </ul>
+        <div class="pos-overlay" x-show="posOpen" x-cloak @keydown.escape.window="closePos()">
+          <header class="pos-header">
+            <div class="pos-customer" x-text="customer.first_name + ' ' + customer.last_name"></div>
+            <div class="pos-balance">
+              <span x-text="t.customerDetail.balance.label"></span>:
+              <span x-text="formatBalance(openBalance) + ' EUR'"></span>
+            </div>
+          </header>
+          <div class="pos-display" x-text="formatPosDisplay() + ' EUR'"></div>
+          <div class="pos-keypad">
+            <button type="button" @click="posDigit('7')">7</button>
+            <button type="button" @click="posDigit('8')">8</button>
+            <button type="button" @click="posDigit('9')">9</button>
+            <button type="button" @click="posDigit('4')">4</button>
+            <button type="button" @click="posDigit('5')">5</button>
+            <button type="button" @click="posDigit('6')">6</button>
+            <button type="button" @click="posDigit('1')">1</button>
+            <button type="button" @click="posDigit('2')">2</button>
+            <button type="button" @click="posDigit('3')">3</button>
+            <button type="button" @click="posDigit('0')">0</button>
+            <button type="button" @click="posComma()">,</button>
+            <button type="button" @click="posBackspace()" :aria-label="t.customerDetail.charge.backspaceLabel">&larr;</button>
+          </div>
+          <div class="pos-actions">
+            <button class="primary pos-cta" :disabled="!posValid() || posSubmitting"
+                    @click="submitCharge()"
+                    x-text="posSubmitting ? t.customerDetail.charge.submitting : t.customerDetail.charge.submit"></button>
+            <button class="secondary" @click="closePos()" x-text="t.customerDetail.charge.cancel"></button>
+          </div>
+          <div x-show="posError" x-cloak class="pos-error" role="alert" x-text="posError"></div>
+        </div>
       </div>
     </template>
+
+    <sl-dialog x-ref="reversalDialog" :label="t.customerDetail.reversal.dialogTitle">
+      <p x-text="reversalCharge ? t.customerDetail.reversal.dialogBody(formatBalance(reversalCharge.amount), formatTxTime(reversalCharge.created_at)) : ''"></p>
+      <sl-button slot="footer" variant="default" @click="closeReversalDialog()"
+                 x-text="t.customerDetail.reversal.cancel"></sl-button>
+      <sl-button slot="footer" variant="danger" @click="confirmReversal()" :loading="reversalSubmitting"
+                 x-text="t.customerDetail.reversal.confirm"></sl-button>
+    </sl-dialog>
 
     <sl-dialog x-ref="deleteDialog" :label="t.customerDetail.deleteDialogTitle">
       <p x-text="customer ? t.customerDetail.deleteDialogBody(customer.first_name, customer.last_name) : ''"></p>
@@ -89,10 +217,22 @@
           qrDataUrl: '',
           qrFileName: '',
           whatsappQrUrl: '',
+          whatsappBalanceUrl: '',
+          session: null,
+          transactions: [],
+          openBalance: 0,
+          reversedIds: new Set(),
+          posOpen: false,
+          posAmount: '',
+          posSubmitting: false,
+          posError: null,
+          reversalCharge: null,
+          reversalSubmitting: false,
           async init() {
             var session = await window.Auth.requireAuth();
             if (!session) return;
             document.body.removeAttribute('x-cloak');
+            this.session = session;
             var match = location.pathname.match(/^\/customers\/([0-9a-f-]{36})\/?$/);
             if (!match) { this.notFound = true; return; }
             var id = match[1];
@@ -104,8 +244,16 @@
             this.customer = resp.data;
             await this.computeQr();
             this.computeWhatsApp();
+            await this.refreshTransactions();
+            this.computeWhatsAppBalance();
             var role = await window.Auth.getRole();
             this.canDelete = (role === 'admin' || role === 'super_admin');
+            try {
+              var params = new URLSearchParams(window.location.search);
+              if (params.get('charge') === '1') {
+                this.openPos();
+              }
+            } catch (e) { /* ignore */ }
           },
           async computeQr() {
             var publicUrl = window.location.origin + '/qr/' + this.customer.qr_token;
@@ -125,6 +273,14 @@
             var text = this.t.customerDetail.qrWhatsAppText(this.customer.first_name, publicUrl);
             this.whatsappQrUrl = 'https://wa.me/' + phoneNoPlus + '?text=' + encodeURIComponent(text);
           },
+          computeWhatsAppBalance() {
+            if (!this.customer) { this.whatsappBalanceUrl = ''; return; }
+            var publicUrl = window.location.origin + '/qr/' + this.customer.qr_token;
+            var phoneNoPlus = (this.customer.phone || '').replace(/^\+/, '');
+            var balanceFormatted = this.formatBalance(this.openBalance);
+            var text = this.t.customerDetail.balance.whatsAppText(this.customer.first_name, balanceFormatted, publicUrl);
+            this.whatsappBalanceUrl = 'https://wa.me/' + phoneNoPlus + '?text=' + encodeURIComponent(text);
+          },
           openDeleteDialog() { this.$refs.deleteDialog.show(); },
           closeDeleteDialog() { this.$refs.deleteDialog.hide(); },
           async confirmDelete() {
@@ -140,6 +296,169 @@
               return;
             }
             window.location.replace('/customers');
+          },
+          async refreshTransactions() {
+            if (!this.customer) return;
+            var resp = await window.Auth.client.from('transactions')
+              .select('id, type, amount, reversal_of_id, paid, paid_at, payment_method, created_at')
+              .eq('customer_id', this.customer.id)
+              .is('deleted_at', null)
+              .order('created_at', { ascending: false });
+            if (resp.error) {
+              console.error('[detail] refreshTransactions error', resp.error);
+              this.transactions = [];
+              this.reversedIds = new Set();
+              this.openBalance = 0;
+              return;
+            }
+            this.transactions = resp.data || [];
+            this.reversedIds = new Set(
+              this.transactions
+                .filter(function (tx) { return tx.type === 'reversal' && tx.reversal_of_id; })
+                .map(function (tx) { return tx.reversal_of_id; })
+            );
+            this.recomputeBalance();
+          },
+          recomputeBalance() {
+            var sumCharges = 0, sumReversals = 0;
+            for (var i = 0; i < this.transactions.length; i++) {
+              var tx = this.transactions[i];
+              if (tx.paid) continue;
+              var amt = parseFloat(tx.amount) || 0;
+              if (tx.type === 'charge') sumCharges += amt;
+              else if (tx.type === 'reversal') sumReversals += amt;
+            }
+            this.openBalance = Math.round((sumCharges - sumReversals) * 100) / 100;
+            this.computeWhatsAppBalance();
+          },
+          formatBalance(n) {
+            try {
+              return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            } catch (e) { return String(n); }
+          },
+          formatTxTime(iso) {
+            try {
+              var d = new Date(iso);
+              var dd = String(d.getDate()).padStart(2, '0');
+              var mm = String(d.getMonth() + 1).padStart(2, '0');
+              var hh = String(d.getHours()).padStart(2, '0');
+              var mi = String(d.getMinutes()).padStart(2, '0');
+              return dd + '/' + mm + ' ' + hh + ':' + mi;
+            } catch (e) { return iso; }
+          },
+          describeTx(tx) {
+            var amount = this.formatBalance(tx.amount);
+            return tx.type === 'charge'
+              ? this.t.customerDetail.transactions.descCharge(amount)
+              : this.t.customerDetail.transactions.descReversal(amount);
+          },
+          txCssClass(tx) {
+            if (tx.type === 'charge' && this.reversedIds.has(tx.id)) return 'tx-reversed';
+            return '';
+          },
+          badgeText(tx) {
+            if (tx.type === 'charge' && this.reversedIds.has(tx.id)) return this.t.customerDetail.transactions.badgeStornato;
+            if (tx.paid) return this.t.customerDetail.transactions.badgeSaldato;
+            return this.t.customerDetail.transactions.badgeAperto;
+          },
+          badgeClass(tx) {
+            if (tx.type === 'charge' && this.reversedIds.has(tx.id)) return 'badge-storno';
+            if (tx.paid) return 'badge-saldato';
+            return 'badge-aperto';
+          },
+          openPos() {
+            this.posAmount = '';
+            this.posError = null;
+            this.posOpen = true;
+          },
+          closePos() {
+            this.posOpen = false;
+            this.posAmount = '';
+            this.posError = null;
+          },
+          posDigit(d) {
+            if (this.posSubmitting) return;
+            if (this.posAmount === '' && d === '0') {
+              this.posAmount = '0,';
+              return;
+            }
+            var parts = this.posAmount.split(',');
+            if (parts.length === 2 && parts[1].length >= 2) return;
+            this.posAmount = this.posAmount + d;
+          },
+          posComma() {
+            if (this.posSubmitting) return;
+            if (this.posAmount.indexOf(',') !== -1) return;
+            if (this.posAmount === '') { this.posAmount = '0,'; return; }
+            this.posAmount = this.posAmount + ',';
+          },
+          posBackspace() {
+            if (this.posSubmitting) return;
+            this.posAmount = this.posAmount.slice(0, -1);
+          },
+          posValid() {
+            var n = parseFloat(this.posAmount.replace(',', '.'));
+            return !isNaN(n) && n > 0;
+          },
+          formatPosDisplay() {
+            if (this.posAmount === '') return '0,00';
+            return this.posAmount;
+          },
+          async submitCharge() {
+            if (this.posSubmitting || !this.posValid()) return;
+            if (!this.session || !this.customer) return;
+            this.posSubmitting = true;
+            this.posError = null;
+            var amount = parseFloat(this.posAmount.replace(',', '.'));
+            var payload = {
+              customer_id: this.customer.id,
+              user_id: this.session.user.id,
+              type: 'charge',
+              amount: amount
+            };
+            var resp = await window.Auth.client.from('transactions').insert(payload).select('id').single();
+            this.posSubmitting = false;
+            if (resp.error) {
+              console.error('[detail] charge insert error', resp.error);
+              this.posError = this.t.customerDetail.charge.error;
+              return;
+            }
+            this.posOpen = false;
+            this.posAmount = '';
+            await this.refreshTransactions();
+          },
+          canReverse(tx) {
+            return tx.type === 'charge' && !tx.paid && !this.reversedIds.has(tx.id);
+          },
+          openReversalDialog(tx) {
+            this.reversalCharge = tx;
+            this.$refs.reversalDialog.show();
+          },
+          closeReversalDialog() {
+            this.$refs.reversalDialog.hide();
+            this.reversalCharge = null;
+          },
+          async confirmReversal() {
+            if (this.reversalSubmitting || !this.reversalCharge) return;
+            if (!this.session || !this.customer) return;
+            this.reversalSubmitting = true;
+            var payload = {
+              customer_id: this.customer.id,
+              user_id: this.session.user.id,
+              type: 'reversal',
+              amount: this.reversalCharge.amount,
+              reversal_of_id: this.reversalCharge.id
+            };
+            var resp = await window.Auth.client.from('transactions').insert(payload).select('id').single();
+            this.reversalSubmitting = false;
+            if (resp.error) {
+              console.error('[detail] reversal insert error', resp.error);
+              alert(this.t.customerDetail.reversal.error);
+              return;
+            }
+            this.$refs.reversalDialog.hide();
+            this.reversalCharge = null;
+            await this.refreshTransactions();
           },
           formatDate(iso) {
             try { return new Date(iso).toLocaleString('it-IT'); } catch (e) { return iso; }
