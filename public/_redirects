@@ -1,9 +1,0 @@
-/login             /pages/login.html              200
-/customers         /pages/customers.html          200
-/customers/new     /pages/customer-new.html       200
-/customers/*       /pages/customer-detail.html    200
-/scan              /pages/scan.html               200
-/checkout/*        /pages/checkout.html           200
-/admin/users       /pages/admin-users.html        200
-/admin/season      /pages/admin-season.html       200
-/qr/*              /pages/qr.html                 200

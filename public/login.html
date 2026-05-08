@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accedi -- Customer QR Tracker</title>
+  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    main.container { max-width: 28rem; margin-top: 4rem; }
+  </style>
+</head>
+<body x-cloak x-data="loginPage" x-init="init()">
+  <main class="container">
+    <hgroup>
+      <h1 x-text="t.login.title"></h1>
+      <p x-text="t.app.title"></p>
+    </hgroup>
+
+    <form @submit.prevent="submit()">
+      <label>
+        <span x-text="t.login.emailLabel"></span>
+        <input type="email" x-model="email" required autocomplete="username" :disabled="submitting">
+      </label>
+      <label>
+        <span x-text="t.login.passwordLabel"></span>
+        <input type="password" x-model="password" required autocomplete="current-password" :disabled="submitting">
+      </label>
+      <button type="submit" :aria-busy="submitting" :disabled="submitting">
+        <span x-text="submitting ? t.login.submitting : t.login.submit"></span>
+      </button>
+    </form>
+
+    <article x-show="error" x-cloak role="alert">
+      <p x-text="errorMessage()"></p>
+    </article>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('loginPage', function () {
+        return {
+          t: window.Strings,
+          email: '',
+          password: '',
+          submitting: false,
+          error: null,
+          async init() {
+            await window.Auth.redirectIfAuthenticated();
+            // Se anon, la pagina resta visibile. x-cloak lo gestisce a livello di body
+            // ma serve un toggle esplicito: rimuoviamo x-cloak settando l'attributo
+            // sul body via Alpine quando init() risolve.
+            document.body.removeAttribute('x-cloak');
+          },
+          errorMessage() {
+            if (!this.error) return '';
+            var key = this.error;
+            return (this.t.errors[key] || this.t.errors.unknown);
+          },
+          async submit() {
+            if (this.submitting) return;
+            this.submitting = true;
+            this.error = null;
+            var resp = await window.Auth.signIn(this.email.trim(), this.password);
+            if (resp.ok) {
+              window.location.replace('/customers');
+              return;
+            }
+            this.error = resp.error || 'unknown';
+            this.submitting = false;
+          }
+        };
+      });
+    });
+  </script>
+</body>
+</html>

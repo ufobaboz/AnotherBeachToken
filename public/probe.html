@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Probe -- Customer QR Tracker</title>
+  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    nav.app-nav { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--pico-muted-border-color); }
+    nav.app-nav h1 { margin: 0; font-size: 1.1rem; }
+    .check { margin-bottom: 0.75rem; }
+    .badge { display: inline-block; min-width: 3rem; text-align: center; padding: 0.1rem 0.5rem; border-radius: 0.2rem; font-family: monospace; font-size: 0.85rem; margin-right: 0.5rem; }
+    .badge-ok   { background: #1c5d31; color: #fff; }
+    .badge-fail { background: #8a1f1f; color: #fff; }
+    .badge-na   { background: #555;    color: #fff; }
+    .badge-pending { background: #777;    color: #fff; }
+    pre { background: var(--pico-card-background-color); padding: 0.5rem; overflow-x: auto; font-size: 0.8rem; }
+  </style>
+</head>
+<body x-cloak x-data="probePage" x-init="init()">
+  <nav class="app-nav">
+    <h1 x-text="t.probe.title"></h1>
+    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+  </nav>
+
+  <main class="container">
+    <p x-text="t.probe.refreshHint"></p>
+
+    <template x-for="check in checks" :key="check.label">
+      <div class="check">
+        <span class="badge" :class="badgeClass(check.status)" x-text="badgeText(check.status)"></span>
+        <strong x-text="check.label"></strong>
+        <span x-show="check.summary"> - <span x-text="check.summary"></span></span>
+        <details x-show="check.details">
+          <summary>Dettagli</summary>
+          <pre x-text="formatDetails(check.details)"></pre>
+        </details>
+      </div>
+    </template>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('probePage', function () {
+        return {
+          t: window.Strings,
+          checks: [],
+          async init() {
+            var session = await window.Auth.requireSuperAdmin();
+            if (!session) return;
+            document.body.removeAttribute('x-cloak');
+            this.checks = [
+              { label: 'Config attiva', status: 'pending', summary: '', details: null },
+              { label: 'Sessione corrente', status: 'pending', summary: '', details: null },
+              { label: 'RPC get_customer_qr_info(token finto)', status: 'pending', summary: '', details: null },
+              { label: 'Edge function auth-ping?stamp=false', status: 'pending', summary: '', details: null },
+              { label: 'Conteggi tabelle', status: 'pending', summary: '', details: null }
+            ];
+            await Promise.allSettled([
+              this.runCheck(0, this.checkConfig.bind(this)),
+              this.runCheck(1, this.checkSession.bind(this, session)),
+              this.runCheck(2, this.checkQrRpc.bind(this)),
+              this.runCheck(3, this.checkAuthPing.bind(this)),
+              this.runCheck(4, this.checkCounts.bind(this))
+            ]);
+          },
+          badgeClass(s) {
+            if (s === 'OK') return 'badge-ok';
+            if (s === 'FAIL') return 'badge-fail';
+            if (s === 'n/a') return 'badge-na';
+            return 'badge-pending';
+          },
+          badgeText(s) {
+            if (s === 'OK') return this.t.probe.statusOk;
+            if (s === 'FAIL') return this.t.probe.statusFail;
+            if (s === 'n/a') return this.t.probe.statusNa;
+            return '...';
+          },
+          formatDetails(d) {
+            try { return JSON.stringify(d, null, 2); } catch (e) { return String(d); }
+          },
+          async runCheck(idx, fn) {
+            try {
+              var result = await fn();
+              this.checks[idx].status = result.status;
+              this.checks[idx].summary = result.summary || '';
+              this.checks[idx].details = result.details || null;
+            } catch (e) {
+              this.checks[idx].status = 'FAIL';
+              this.checks[idx].summary = (e && e.message) ? e.message : String(e);
+              this.checks[idx].details = e;
+            }
+          },
+          async checkConfig() {
+            var cfg = window.APP_CONFIG || {};
+            var url = cfg.SUPABASE_URL || '';
+            var key = cfg.SUPABASE_ANON_KEY || '';
+            if (!url || !key) {
+              return { status: 'FAIL', summary: 'APP_CONFIG mancante', details: { url: url, keyLen: key.length } };
+            }
+            return {
+              status: 'OK',
+              summary: url,
+              details: { SUPABASE_URL: url, key_prefix: key.slice(0, 20), key_length: key.length }
+            };
+          },
+          async checkSession(session) {
+            var resp = await window.Auth.client
+              .from('profiles')
+              .select('first_name, last_name, role, last_login_at, created_at')
+              .eq('id', session.user.id)
+              .maybeSingle();
+            if (resp.error) {
+              return { status: 'FAIL', summary: resp.error.message, details: resp.error };
+            }
+            if (!resp.data) {
+              return { status: 'FAIL', summary: 'Profilo non trovato', details: { user_id: session.user.id } };
+            }
+            return {
+              status: 'OK',
+              summary: resp.data.first_name + ' ' + resp.data.last_name + ' (' + resp.data.role + ')',
+              details: {
+                user_id: session.user.id,
+                email: session.user.email,
+                role: resp.data.role,
+                first_name: resp.data.first_name,
+                last_name: resp.data.last_name,
+                last_login_at: resp.data.last_login_at,
+                created_at: resp.data.created_at,
+                session_expires_at: session.expires_at
+              }
+            };
+          },
+          async checkQrRpc() {
+            var resp = await window.Auth.client.rpc('get_customer_qr_info', { p_token: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' });
+            if (resp.error) {
+              return { status: 'FAIL', summary: resp.error.message, details: resp.error };
+            }
+            var rows = Array.isArray(resp.data) ? resp.data : (resp.data ? [resp.data] : []);
+            return {
+              status: 'OK',
+              summary: '0 righe (token finto, atteso)',
+              details: { rows: rows.length, raw: resp.data }
+            };
+          },
+          async checkAuthPing() {
+            var resp = await window.Auth.callAuthPing({ stamp: false });
+            if (resp.status !== 200) {
+              return { status: 'FAIL', summary: 'HTTP ' + resp.status, details: resp };
+            }
+            return {
+              status: 'OK',
+              summary: 'role=' + (resp.body ? resp.body.role : '?') + ', latency=' + resp.latency_ms + 'ms',
+              details: resp
+            };
+          },
+          async checkCounts() {
+            var c = window.Auth.client;
+            var p = await c.from('profiles').select('*', { count: 'exact', head: true });
+            var cu = await c.from('customers').select('*', { count: 'exact', head: true });
+            var t = await c.from('transactions').select('*', { count: 'exact', head: true });
+            var failures = [p, cu, t].filter(function (r) { return r.error; });
+            if (failures.length > 0) {
+              return { status: 'FAIL', summary: failures[0].error.message, details: { p: p.error, cu: cu.error, t: t.error } };
+            }
+            return {
+              status: 'OK',
+              summary: 'profiles=' + p.count + ', customers=' + cu.count + ', transactions=' + t.count,
+              details: { profiles: p.count, customers: cu.count, transactions: t.count }
+            };
+          },
+          async logout() {
+            await window.Auth.signOut();
+          }
+        };
+      });
+    });
+  </script>
+</body>
+</html>
