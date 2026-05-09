@@ -171,10 +171,15 @@ security definer
 stable
 set search_path = public
 as $$
+  -- coalesce su entrambi gli addendi: sum FILTER restituisce NULL se
+  -- nessuna riga matcha il filtro. Senza il coalesce interno, un
+  -- cliente con sole charges aperte (no reversals) avrebbe
+  -- N - NULL = NULL, mascherato a 0 dal coalesce esterno -> saldo
+  -- errato. Migration: fix_get_customer_qr_info_null_handling.
   select c.first_name,
          coalesce(
-           (select sum(t.amount) filter (where t.type = 'charge')
-                 - sum(t.amount) filter (where t.type = 'reversal')
+           (select coalesce(sum(t.amount) filter (where t.type = 'charge'), 0)
+                 - coalesce(sum(t.amount) filter (where t.type = 'reversal'), 0)
               from public.transactions t
              where t.customer_id = c.id
                and t.paid = false

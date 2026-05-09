@@ -54,6 +54,7 @@ window.Strings = {
     qrWhatsAppText: function (firstName, publicUrl) {
       return 'Ciao ' + firstName + ', ecco il tuo QR per il bar: ' + publicUrl;
     },
+    ctaCheckout: 'Chiudi conto',
     deleteButton: 'Cancella cliente',
     deleteDialogTitle: 'Conferma cancellazione',
     deleteDialogBody: function (firstName, lastName) {
@@ -69,7 +70,13 @@ window.Strings = {
       descReversal: function (amount) { return 'Storno addebito ' + amount + ' EUR'; },
       badgeAperto: 'APERTO',
       badgeStornato: 'STORNATO',
-      badgeSaldato: 'SALDATO'
+      badgeSaldato: 'SALDATO',
+      paidInfoWithName: function (date, method, adminName) {
+        return 'saldato il ' + date + ' via ' + method + ' da ' + adminName;
+      },
+      paidInfoNoName: function (date, method) {
+        return 'saldato il ' + date + ' via ' + method;
+      }
     },
     balance: {
       label: 'Saldo aperto',
@@ -104,6 +111,32 @@ window.Strings = {
     openBalanceLabel: 'Saldo aperto',
     currency: 'EUR'
   },
+  paymentMethods: {
+    cash: 'Contanti',
+    card: 'Carta',
+    transfer: 'Bonifico',
+    other: 'Altro'
+  },
+  checkout: {
+    title: 'Chiusura conto',
+    backToList: 'Torna alla lista',
+    notFound: 'Cliente non trovato.',
+    sectionMovements: 'Movimenti da saldare',
+    emptyMovements: 'Nessun movimento da saldare.',
+    balanceLabel: 'Saldo aperto',
+    methodLabel: 'Metodo di pagamento',
+    emptyBalanceCta: 'Nessun importo da saldare',
+    confirmCta: function (amount, methodLabel) {
+      return 'Conferma chiusura - ' + amount + ' EUR via ' + methodLabel;
+    },
+    submitting: 'Chiusura in corso...',
+    error: 'Errore in fase di chiusura. Riprova.',
+    partial: 'Chiusura parziale: ricarica la pagina e verifica.',
+    raceAlert: function (n) {
+      return 'Sono arrivate ' + n + ' nuove transazioni mentre eri qui. Apri di nuovo la chiusura per saldarle.';
+    },
+    raceReload: 'Ricarica chiusura'
+  },
   scan: {
     title: 'Scansiona QR',
     cameraDenied: 'Permesso camera negato. Concedi accesso alla telecamera per scansionare.',
@@ -117,6 +150,7 @@ window.Strings = {
     statusOk: 'OK',
     statusFail: 'FAIL',
     statusNa: 'n/a',
-    refreshHint: 'Ricarica la pagina per ri-eseguire i check.'
+    refreshHint: 'Ricarica la pagina per ri-eseguire i check.',
+    openBalanceLabel: 'Saldo aperto totale'
   }
 };

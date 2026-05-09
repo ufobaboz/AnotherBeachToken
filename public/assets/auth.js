@@ -80,6 +80,17 @@
     return session;
   }
 
+  async function requireAdmin() {
+    var session = await requireAuth();
+    if (!session) return null;
+    var role = await getRole();
+    if (role !== 'admin' && role !== 'super_admin') {
+      window.location.replace('/customers');
+      return null;
+    }
+    return session;
+  }
+
   async function getRole() {
     if (cachedRole !== null) return cachedRole;
     var session = await getSession();
@@ -146,6 +157,7 @@
     requireAuth: requireAuth,
     redirectIfAuthenticated: redirectIfAuthenticated,
     requireSuperAdmin: requireSuperAdmin,
+    requireAdmin: requireAdmin,
     getRole: getRole,
     callAuthPing: callAuthPing
   };
