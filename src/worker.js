@@ -2,8 +2,9 @@
 // Worker handler per route con dynamic param. Tutte le altre
 // pagine (login, customers, probe, /) sono servite via extension
 // stripping nativo di Workers Static Assets (passthrough).
-const TOKEN_RE = /^\/qr\/[A-Z2-7]{32}$/;
-const UUID_RE  = /^\/customers\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const TOKEN_RE    = /^\/qr\/[A-Z2-7]{32}$/;
+const UUID_RE     = /^\/customers\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const CHECKOUT_RE = /^\/checkout\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export default {
   async fetch(request, env) {
@@ -20,6 +21,8 @@ export default {
       target = '/customer-new';
     } else if (UUID_RE.test(path)) {
       target = '/customer-detail';
+    } else if (CHECKOUT_RE.test(path)) {
+      target = '/checkout';
     }
 
     if (target) {

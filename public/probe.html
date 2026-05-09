@@ -59,14 +59,16 @@
               { label: 'Sessione corrente', status: 'pending', summary: '', details: null },
               { label: 'RPC get_customer_qr_info(token finto)', status: 'pending', summary: '', details: null },
               { label: 'Edge function auth-ping?stamp=false', status: 'pending', summary: '', details: null },
-              { label: 'Conteggi tabelle', status: 'pending', summary: '', details: null }
+              { label: 'Conteggi tabelle', status: 'pending', summary: '', details: null },
+              { label: this.t.probe.openBalanceLabel, status: 'pending', summary: '', details: null }
             ];
             await Promise.allSettled([
               this.runCheck(0, this.checkConfig.bind(this)),
               this.runCheck(1, this.checkSession.bind(this, session)),
               this.runCheck(2, this.checkQrRpc.bind(this)),
               this.runCheck(3, this.checkAuthPing.bind(this)),
-              this.runCheck(4, this.checkCounts.bind(this))
+              this.runCheck(4, this.checkCounts.bind(this)),
+              this.runCheck(5, this.checkOpenBalance.bind(this))
             ]);
           },
           badgeClass(s) {
@@ -198,6 +200,36 @@
                 charges_paid: txChargePaid.count,
                 reversals_open: txReversalOpen.count,
                 reversals_paid: txReversalPaid.count
+              }
+            };
+          },
+          async checkOpenBalance() {
+            // .range(0, 49999) esplicito: PostgREST default limit Supabase = 1000 righe.
+            // A stagione piena (max ~50K transactions, di cui meta' aperte) il default
+            // sotto-stimerebbe. Aggreghiamo client-side. Se il probe diventa lento a
+            // stagione piena (> 5s), refactor a RPC SECURITY DEFINER lato DB.
+            var resp = await window.Auth.client.from('transactions')
+              .select('amount, type, customer_id')
+              .is('deleted_at', null).eq('paid', false)
+              .range(0, 49999);
+            if (resp.error) {
+              return { status: 'FAIL', summary: resp.error.message, details: resp.error };
+            }
+            var sumCh = 0, sumRev = 0, custIds = new Set();
+            (resp.data || []).forEach(function (tx) {
+              var amt = parseFloat(tx.amount) || 0;
+              if (tx.type === 'charge') sumCh += amt;
+              else if (tx.type === 'reversal') sumRev += amt;
+              custIds.add(tx.customer_id);
+            });
+            var total = Math.round((sumCh - sumRev) * 100) / 100;
+            return {
+              status: 'OK',
+              summary: total.toFixed(2) + ' EUR aperti, ' + (resp.data || []).length + ' movimenti, ' + custIds.size + ' clienti',
+              details: {
+                total_open_eur: total,
+                movements_open: (resp.data || []).length,
+                distinct_customers: custIds.size
               }
             };
           },
