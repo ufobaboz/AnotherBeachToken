@@ -72,6 +72,46 @@ export async function getCustomerQrToken(page: Page, customerId: string): Promis
   return token;
 }
 
+export interface TestOperator {
+  id: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+}
+
+export async function createTestOperator(page: Page): Promise<TestOperator> {
+  // page deve essere autenticata come super_admin o admin (l'edge function create-operator richiede admin+).
+  const ts = Date.now();
+  const rand = randomSuffix();
+  const email = `e2e-op-${ts}-${rand}@example.com`;
+  const password = 'E2eTest' + ts + rand;
+  const firstName = 'E2E';
+  const lastName = `ZZ-E2E-OP-${rand}`;
+  const resp = await page.evaluate(async (body) => {
+    return await window.Auth.callEdgeFunction('create-operator', body);
+  }, { email, password, first_name: firstName, last_name: lastName });
+  if (resp.status !== 200) {
+    throw new Error('createTestOperator failed: ' + JSON.stringify(resp));
+  }
+  const respBody = resp.body as Record<string, unknown>;
+  if (typeof respBody.profile_id !== 'string') {
+    throw new Error('createTestOperator: missing profile_id in response: ' + JSON.stringify(resp));
+  }
+  return { id: respBody.profile_id, email, password, firstName, lastName };
+}
+
+export async function softDeleteTestOperator(page: Page, id: string): Promise<void> {
+  // Best-effort cleanup. Se la pagina non e' loggata come admin+, fallisce silenzioso.
+  try {
+    await page.evaluate(async (target_id) => {
+      return await window.Auth.callEdgeFunction('soft-delete-profile', { target_id });
+    }, id);
+  } catch (e) {
+    console.warn('[softDeleteTestOperator] cleanup failed for id=' + id + ':', e);
+  }
+}
+
 /**
  * Apre il customer-detail con ?charge=1 (auto-open tastiera POS) e battezza
  * un addebito. amountInteger e amountDecimal sono stringhe di cifre senza
