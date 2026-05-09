@@ -15,3 +15,14 @@ export async function loginAsSuperAdmin(page: Page): Promise<void> {
   ]);
   await expect(page).toHaveURL(/\/customers$/);
 }
+
+export async function loginAsOperator(page: Page, email: string, password: string): Promise<void> {
+  await page.goto('/login');
+  await page.locator('input[type=email]').fill(email);
+  await page.locator('input[type=password]').fill(password);
+  await Promise.all([
+    page.waitForURL(/\/customers$/, { timeout: 15_000 }),
+    page.locator('button[type=submit]').click()
+  ]);
+  await expect(page).toHaveURL(/\/customers$/);
+}
