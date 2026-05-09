@@ -124,6 +124,26 @@
     return { status: resp.status, latency_ms: latency, body: body };
   }
 
+  async function callEdgeFunction(name, body) {
+    var session = await getSession();
+    if (!session) throw new Error('no session');
+    var endpoint = url + '/functions/v1/' + name;
+    var startedAt = Date.now();
+    var resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + session.access_token,
+        'apikey': anon,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body || {})
+    });
+    var latency = Date.now() - startedAt;
+    var json = null;
+    try { json = await resp.json(); } catch (e) { json = null; }
+    return { status: resp.status, latency_ms: latency, body: json };
+  }
+
   async function signIn(email, password) {
     try {
       var resp = await client.auth.signInWithPassword({ email: email, password: password });
@@ -158,7 +178,9 @@
     redirectIfAuthenticated: redirectIfAuthenticated,
     requireSuperAdmin: requireSuperAdmin,
     requireAdmin: requireAdmin,
+    requireAdminOrAbove: requireAdmin,
     getRole: getRole,
-    callAuthPing: callAuthPing
+    callAuthPing: callAuthPing,
+    callEdgeFunction: callEdgeFunction
   };
 })();

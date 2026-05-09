@@ -8,12 +8,14 @@
 // si aggiorna -- non si aggiunge "stesso comportamento, milestone nuova".
 
 import { test, expect, Route } from '@playwright/test';
-import { loginAsSuperAdmin } from '../helpers/auth';
+import { loginAsSuperAdmin, loginAsOperator } from '../helpers/auth';
 import {
   createTestCustomer,
   softDeleteTestCustomer,
   chargeAmount,
-  getCustomerQrToken
+  getCustomerQrToken,
+  createTestOperator,
+  softDeleteTestOperator
 } from '../helpers/fixtures';
 
 // ----------------------------------------------------------------------
@@ -131,13 +133,23 @@ test.describe('Probe diagnostico', () => {
     const totalCount = await allBadges.count();
     const okCount = await page.locator('.check .badge.badge-ok').count();
     expect(okCount).toBe(totalCount);
-    expect(totalCount).toBeGreaterThanOrEqual(6);
+    expect(totalCount).toBeGreaterThanOrEqual(7);
   });
 
   test('/probe da contesto anon -> redirect /login', async ({ page }) => {
     await page.goto('/probe');
     await page.waitForURL(/\/login$/, { timeout: 10_000 });
     await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test('/probe check 7: Profiles per ruolo', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/probe');
+    const row = page.locator('.check', { hasText: 'Profiles per ruolo' });
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row.locator('.badge.badge-ok')).toBeVisible({ timeout: 30_000 });
+    // summary contiene super_admin=<n> con n >= 1
+    await expect(row).toContainText(/super_admin\s*=\s*[1-9]\d*/);
   });
 
 });
@@ -379,6 +391,285 @@ test.describe('Chiusura conto', () => {
       await expect(page.locator('.method-row')).toBeHidden();
     } finally {
       await softDeleteTestCustomer(page, customer.id);
+    }
+  });
+
+});
+
+// ----------------------------------------------------------------------
+// Gestione operator
+// ----------------------------------------------------------------------
+test.describe('Gestione operator', () => {
+
+  test('create-operator: 401 senza Authorization', async ({ request }) => {
+    const resp = await request.post(
+      `${process.env.SUPABASE_URL || 'https://xccpopnwqrxjjhrtyiwd.supabase.co'}/functions/v1/create-operator`,
+      { data: {}, failOnStatusCode: false }
+    );
+    expect(resp.status()).toBe(401);
+    const body = await resp.json();
+    expect(body.error).toBe('missing_auth');
+  });
+
+  test('create-operator: 200 per super_admin con body valido', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const email = `e2e-op-${Date.now()}@example.com`;
+    const resp = await page.evaluate(async (body) => {
+      return await window.Auth.callEdgeFunction('create-operator', body);
+    }, { email, password: 'TestPwd1234', first_name: 'E2E', last_name: `ZZ-E2E-OP-${Date.now()}` });
+    expect(resp.status).toBe(200);
+    const respBody = resp.body as Record<string, unknown>;
+    expect(respBody.profile_id).toMatch(/^[0-9a-f-]{36}$/);
+    // cleanup
+    await page.evaluate(async (target_id) => {
+      return await window.Auth.callEdgeFunction('soft-delete-profile', { target_id });
+    }, respBody.profile_id as string);
+  });
+
+  test('soft-delete-profile: 200 + record marcato deleted', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    const delResp = await page.evaluate(async (target_id) => {
+      return await window.Auth.callEdgeFunction('soft-delete-profile', { target_id });
+    }, op.id);
+    expect(delResp.status).toBe(200);
+    const delBody = delResp.body as Record<string, unknown>;
+    expect(delBody.ok).toBe(true);
+    // no cleanup needed: gia' soft-deleted dal test stesso
+  });
+
+  test('soft-delete-profile: 409 target_self', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const sessionUserId = await page.evaluate(async () => {
+      const s = await window.Auth.client.auth.getSession();
+      return s.data.session?.user.id;
+    });
+    expect(sessionUserId).toBeTruthy();
+    const resp = await page.evaluate(async (target_id) => {
+      return await window.Auth.callEdgeFunction('soft-delete-profile', { target_id });
+    }, sessionUserId as string);
+    expect(resp.status).toBe(409);
+    const body = resp.body as Record<string, unknown>;
+    expect(body.error).toBe('target_self');
+  });
+
+  test('update-profile: 200 + UPDATE applicato', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      const resp = await page.evaluate(async (body) => {
+        return await window.Auth.callEdgeFunction('update-profile', body);
+      }, { target_id: op.id, first_name: 'Modificato', last_name: op.lastName, notes: 'note di test' });
+      expect(resp.status).toBe(200);
+      const respBody = resp.body as Record<string, unknown>;
+      expect(respBody.ok).toBe(true);
+      // verify via SELECT (RLS permette al super_admin di leggere)
+      const profile = await page.evaluate(async (id) => {
+        const r = await window.Auth.client.from('profiles')
+          .select('first_name, last_name, notes')
+          .eq('id', id).maybeSingle();
+        return r.data;
+      }, op.id);
+      expect(profile!.first_name).toBe('Modificato');
+      expect(profile!.notes).toBe('note di test');
+    } finally {
+      await softDeleteTestOperator(page, op.id);
+    }
+  });
+
+  test('reset-operator-password: vecchia FAIL nuova OK', async ({ page, browser }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      const newPwd = 'NewPwd' + Date.now();
+      const resp = await page.evaluate(async (body) => {
+        return await window.Auth.callEdgeFunction('reset-operator-password', body);
+      }, { target_id: op.id, password: newPwd });
+      expect(resp.status).toBe(200);
+      // login con vecchia password -> FAIL (alert visibile)
+      const ctx = await browser.newContext();
+      const opPage = await ctx.newPage();
+      try {
+        await opPage.goto('/login');
+        await opPage.locator('input[type=email]').fill(op.email);
+        await opPage.locator('input[type=password]').fill(op.password);
+        await opPage.locator('button[type=submit]').click();
+        await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
+        // login con nuova password -> OK redirect /customers
+        await opPage.locator('input[type=password]').fill(newPwd);
+        await opPage.locator('button[type=submit]').click();
+        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+      } finally { await ctx.close(); }
+    } finally {
+      await softDeleteTestOperator(page, op.id);
+    }
+  });
+
+  test('anon su /admin/users -> redirect /login', async ({ page }) => {
+    await page.goto('/admin/users');
+    await page.waitForURL(/\/login$/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test('operator su /admin/users -> redirect /customers', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      // logout super_admin: pulisce localStorage Supabase e naviga a /login
+      await page.evaluate(() => {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('sb-'))
+          .forEach((k) => localStorage.removeItem(k));
+      });
+      await page.goto('/login');
+      await expect(page.locator('input[type=email]')).toBeVisible({ timeout: 8_000 });
+      // login operator
+      await loginAsOperator(page, op.email, op.password);
+      // visita /admin/users -> guard redirecta a /customers (operator non ha accesso)
+      await page.goto('/admin/users');
+      await page.waitForURL(/\/customers$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/customers$/);
+    } finally {
+      // logout operator: stessa pulizia, poi login come super_admin
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith('sb-'))
+            .forEach((k) => localStorage.removeItem(k));
+        });
+        await page.goto('/login');
+        await expect(page.locator('input[type=email]')).toBeVisible({ timeout: 8_000 });
+      } catch (_e) { /* ignore */ }
+      await loginAsSuperAdmin(page);
+      await softDeleteTestOperator(page, op.id);
+    }
+  });
+
+  test('super_admin su /admin/users -> pagina caricata', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/admin/users');
+    // aspetta che Alpine rimuova x-cloak dal body (guard ok -> removeAttribute)
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    await expect(page.locator('h1')).toHaveText('Gestione operator', { timeout: 5_000 });
+    await expect(page.locator('a[href="/customers"]')).toBeVisible();
+  });
+
+  test('edit operator via dialog -> nuovo nome in lista', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      await page.goto('/admin/users');
+      const row = page.locator('table tbody tr', { hasText: op.lastName });
+      await expect(row).toBeVisible({ timeout: 8_000 });
+      await row.locator('button', { hasText: 'Modifica' }).click();
+      const dialog = page.locator('sl-dialog[label="Modifica operator"]');
+      await expect(dialog).toBeVisible();
+      const inputs = dialog.locator('input[type="text"]');
+      await inputs.nth(0).fill('Modificato');
+      await dialog.locator('sl-button[variant="primary"]').click();
+      // riga aggiornata
+      await expect(page.locator('table tbody tr', { hasText: 'Modificato' })).toBeVisible({ timeout: 5_000 });
+    } finally {
+      await softDeleteTestOperator(page, op.id);
+    }
+  });
+
+  test('reset password via dialog: vecchia FAIL, nuova OK', async ({ page, browser }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      await page.goto('/admin/users');
+      const row = page.locator('table tbody tr', { hasText: op.lastName });
+      await expect(row).toBeVisible({ timeout: 8_000 });
+      await row.locator('button', { hasText: 'Reset password' }).click();
+      const dialog = page.locator('sl-dialog[label="Reset password"]');
+      await expect(dialog).toBeVisible();
+      const newPwd = 'NewPwd' + Date.now();
+      const inputs = dialog.locator('input[type="password"]');
+      await inputs.nth(0).fill(newPwd);
+      await inputs.nth(1).fill(newPwd);
+      await dialog.locator('sl-button[variant="primary"]').click();
+      await expect(page.locator('article[role="status"]')).toBeVisible({ timeout: 10_000 });
+      // login con vecchia: FAIL; con nuova: OK
+      const ctx = await browser.newContext();
+      const opPage = await ctx.newPage();
+      try {
+        await opPage.goto('/login');
+        await opPage.locator('input[type=email]').fill(op.email);
+        await opPage.locator('input[type=password]').fill(op.password);
+        await opPage.locator('button[type=submit]').click();
+        await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
+        await opPage.locator('input[type=password]').fill(newPwd);
+        await opPage.locator('button[type=submit]').click();
+        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+      } finally { await ctx.close(); }
+    } finally {
+      await softDeleteTestOperator(page, op.id);
+    }
+  });
+
+  test('delete operator via dialog: scompare dalla lista + auth-ping profile_deleted', async ({ page, browser }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      await page.goto('/admin/users');
+      const row = page.locator('table tbody tr', { hasText: op.lastName });
+      await expect(row).toBeVisible({ timeout: 8_000 });
+      await row.locator('button.contrast', { hasText: 'Cancella' }).click();
+      const dialog = page.locator('sl-dialog[label="Conferma cancellazione"]');
+      await expect(dialog).toBeVisible();
+      await dialog.locator('sl-button[variant="danger"]').click();
+      await expect(page.locator('table tbody tr', { hasText: op.lastName })).toHaveCount(0, { timeout: 10_000 });
+
+      // auth-ping del cancellato (login op + chiamata)
+      const ctx = await browser.newContext();
+      const opPage = await ctx.newPage();
+      try {
+        await opPage.goto('/login');
+        await opPage.locator('input[type=email]').fill(op.email);
+        await opPage.locator('input[type=password]').fill(op.password);
+        await opPage.locator('button[type=submit]').click();
+        // signInWithPassword riesce comunque; la pagina atterrara' su /customers.
+        // Aspetta che il redirect si completi e auth.js abbia la sessione caricata.
+        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        const ping = await opPage.evaluate(async () => {
+          return await window.Auth.callAuthPing({ stamp: false });
+        });
+        expect(ping.status).toBe(403);
+        const pingBody = ping.body as Record<string, unknown>;
+        expect(pingBody.error).toBe('profile_deleted');
+      } finally { await ctx.close(); }
+    } finally {
+      // gia' soft-deleted, no-op
+    }
+  });
+
+  test('create operator via dialog -> riga in lista + success message', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/admin/users');
+    const ts = Date.now();
+    const lastName = `ZZ-E2E-OP-DLG-${ts}`;
+    const email = `e2e-op-dlg-${ts}@example.com`;
+    let createdId: string | null = null;
+    try {
+      await page.locator('button.primary', { hasText: '+ Nuovo operator' }).click();
+      const dialog = page.locator('sl-dialog[label="Nuovo operator"]');
+      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      await dialog.locator('input[type="email"]').fill(email);
+      await dialog.locator('input[type="password"]').fill('TestPwd1234');
+      const textInputs = dialog.locator('input[type="text"]');
+      await textInputs.nth(0).fill('E2E'); // first_name
+      await textInputs.nth(1).fill(lastName); // last_name
+      await dialog.locator('sl-button[variant="primary"]').click();
+      await expect(page.locator('article[role="status"]')).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator('table tbody tr', { hasText: lastName })).toBeVisible({ timeout: 5_000 });
+      // recupera id per cleanup
+      createdId = await page.evaluate(async (ln) => {
+        const r = await window.Auth.client.from('profiles').select('id').eq('last_name', ln).maybeSingle();
+        return (r.data as { id: string } | null)?.id || null;
+      }, lastName);
+    } finally {
+      if (createdId) await softDeleteTestOperator(page, createdId);
     }
   });
 

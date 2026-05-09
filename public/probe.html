@@ -60,7 +60,8 @@
               { label: 'RPC get_customer_qr_info(token finto)', status: 'pending', summary: '', details: null },
               { label: 'Edge function auth-ping?stamp=false', status: 'pending', summary: '', details: null },
               { label: 'Conteggi tabelle', status: 'pending', summary: '', details: null },
-              { label: this.t.probe.openBalanceLabel, status: 'pending', summary: '', details: null }
+              { label: this.t.probe.openBalanceLabel, status: 'pending', summary: '', details: null },
+              { label: 'Profiles per ruolo', status: 'pending', summary: '', details: null }
             ];
             await Promise.allSettled([
               this.runCheck(0, this.checkConfig.bind(this)),
@@ -68,7 +69,8 @@
               this.runCheck(2, this.checkQrRpc.bind(this)),
               this.runCheck(3, this.checkAuthPing.bind(this)),
               this.runCheck(4, this.checkCounts.bind(this)),
-              this.runCheck(5, this.checkOpenBalance.bind(this))
+              this.runCheck(5, this.checkOpenBalance.bind(this)),
+              this.runCheck(6, this.checkProfilesByRole.bind(this))
             ]);
           },
           badgeClass(s) {
@@ -230,6 +232,39 @@
                 total_open_eur: total,
                 movements_open: (resp.data || []).length,
                 distinct_customers: custIds.size
+              }
+            };
+          },
+          async checkProfilesByRole() {
+            var c = window.Auth.client;
+            async function cnt(role, deleted) {
+              var q = c.from('profiles').select('*', { count: 'exact', head: true }).eq('role', role);
+              if (deleted === false) q = q.is('deleted_at', null);
+              if (deleted === true)  q = q.not('deleted_at', 'is', null);
+              return await q;
+            }
+            var results = await Promise.all([
+              cnt('super_admin', false), cnt('super_admin', true),
+              cnt('admin',       false), cnt('admin',       true),
+              cnt('operator',    false), cnt('operator',    true)
+            ]);
+            var failures = results.filter(function (r) { return r.error; });
+            if (failures.length > 0) {
+              return { status: 'FAIL', summary: failures[0].error.message, details: failures.map(function (f) { return f.error; }) };
+            }
+            var saA = results[0], saD = results[1], aA = results[2], aD = results[3], oA = results[4], oD = results[5];
+            return {
+              status: 'OK',
+              summary: 'super_admin=' + saA.count + (saD.count ? '/' + saD.count + ' cancellati' : '')
+                     + ', admin=' + aA.count + '/' + aD.count + ' attivi/cancellati'
+                     + ', operator=' + oA.count + '/' + oD.count + ' attivi/cancellati',
+              details: {
+                super_admin_active: saA.count,
+                super_admin_deleted: saD.count,
+                admin_active: aA.count,
+                admin_deleted: aD.count,
+                operator_active: oA.count,
+                operator_deleted: oD.count
               }
             };
           },
