@@ -50,6 +50,7 @@
     .badge-aperto  { background: #f3a712; color: #fff; }
     .badge-storno  { background: #555;    color: #fff; }
     .badge-saldato { background: #1c5d31; color: #fff; }
+    .tx-paid-info  { grid-column: 2 / -1; font-size: 0.85rem; color: var(--pico-muted-color); }
     .pos-cta-inline {
       width: 100%;
       margin-bottom: 1rem;
@@ -105,6 +106,9 @@
              class="secondary" x-text="t.customerDetail.sendQrWhatsApp"></a>
           <a :href="whatsappBalanceUrl" target="_blank" rel="noopener" role="button"
              class="secondary" x-text="t.customerDetail.balance.sendWhatsApp"></a>
+          <a :href="'/checkout/' + customer.id" role="button"
+             x-show="canCheckout" x-cloak
+             x-text="t.customerDetail.ctaCheckout"></a>
           <button class="contrast" @click="openDeleteDialog()" x-show="canDelete" x-cloak
                   x-text="t.customerDetail.deleteButton"></button>
         </div>
@@ -151,6 +155,7 @@
                         @click="openReversalDialog(tx)"
                         x-text="t.customerDetail.reversal.button"></button>
               </div>
+              <div class="tx-paid-info" x-show="tx.paid" x-cloak x-text="paidInfoText(tx)"></div>
             </li>
           </template>
         </ul>
@@ -213,6 +218,7 @@
           customer: null,
           notFound: false,
           canDelete: false,
+          canCheckout: false,
           deleting: false,
           qrDataUrl: '',
           qrFileName: '',
@@ -248,6 +254,7 @@
             this.computeWhatsAppBalance();
             var role = await window.Auth.getRole();
             this.canDelete = (role === 'admin' || role === 'super_admin');
+            this.canCheckout = (role === 'admin' || role === 'super_admin');
             try {
               var params = new URLSearchParams(window.location.search);
               if (params.get('charge') === '1') {
@@ -300,7 +307,7 @@
           async refreshTransactions() {
             if (!this.customer) return;
             var resp = await window.Auth.client.from('transactions')
-              .select('id, type, amount, reversal_of_id, paid, paid_at, payment_method, created_at')
+              .select('id, type, amount, reversal_of_id, paid, paid_at, payment_method, paid_by_id, created_at, paidBy:profiles!paid_by_id(first_name, last_name)')
               .eq('customer_id', this.customer.id)
               .is('deleted_at', null)
               .order('created_at', { ascending: false });
@@ -365,6 +372,17 @@
             if (tx.type === 'charge' && this.reversedIds.has(tx.id)) return 'badge-storno';
             if (tx.paid) return 'badge-saldato';
             return 'badge-aperto';
+          },
+          paidInfoText(tx) {
+            if (!tx.paid) return '';
+            var date = this.formatTxTime(tx.paid_at);
+            var method = (window.Strings.paymentMethods && window.Strings.paymentMethods[tx.payment_method]) || tx.payment_method;
+            if (tx.paidBy && tx.paidBy.first_name) {
+              return this.t.customerDetail.transactions.paidInfoWithName(
+                date, method, tx.paidBy.first_name + ' ' + tx.paidBy.last_name
+              );
+            }
+            return this.t.customerDetail.transactions.paidInfoNoName(date, method);
           },
           openPos() {
             this.posAmount = '';
