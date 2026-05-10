@@ -1,8 +1,11 @@
 name: Daily backup R2
 
+# Cron sospeso finche' i secret R2_*/SUPABASE_DB_URL non sono settati (M8 Sub-C C.1
+# rinviato dall'utente il 2026-05-10). Riabilitare la riga schedule quando l'utente
+# completa il setup R2 esterno e i secret sono in GitHub Secrets.
 on:
-  schedule:
-    - cron: '0 3 * * *'   # 03:00 UTC (04:00 CET / 05:00 CEST)
+  # schedule:
+  #   - cron: '0 3 * * *'   # 03:00 UTC (04:00 CET / 05:00 CEST)
   workflow_dispatch:
 
 jobs:
