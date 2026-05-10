@@ -1,4 +1,4 @@
-name = "anotherbeachproject"
+name = "anotherbeachproject-dev"
 account_id = "9aea46551a6124e9e4d0233168e81f47"
 compatibility_date = "2026-05-01"
 main = "src/worker.js"
