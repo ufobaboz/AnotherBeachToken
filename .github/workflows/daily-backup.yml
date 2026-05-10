@@ -1,0 +1,47 @@
+name: Daily backup R2
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC (04:00 CET / 05:00 CEST)
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - name: Install psql + awscli
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client awscli
+
+      - name: Resolve date (UTC)
+        run: echo "BACKUP_DATE=$(date -u +%F)" >> $GITHUB_ENV
+
+      - name: Dump tables
+        run: |
+          for t in customers transactions profiles; do
+            echo "Dumping $t ..."
+            psql "${{ secrets.SUPABASE_DB_URL }}" \
+              -c "\copy public.$t TO '$t.csv' WITH (FORMAT csv, HEADER)"
+            echo "Dump $t done:"
+            ls -la "$t.csv"
+          done
+
+      - name: Upload to R2
+        run: |
+          for t in customers transactions profiles; do
+            echo "Uploading $t.csv to s3://${{ secrets.R2_BUCKET }}/$BACKUP_DATE/$t.csv"
+            aws s3 cp "$t.csv" \
+              "s3://${{ secrets.R2_BUCKET }}/$BACKUP_DATE/$t.csv" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+          done
+
+      - name: List uploaded
+        run: |
+          aws s3 ls "s3://${{ secrets.R2_BUCKET }}/$BACKUP_DATE/" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}"

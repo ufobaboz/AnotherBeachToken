@@ -214,3 +214,55 @@ DEV per primo, poi PRD se il primo apply e' verde. Niente drift accettabile fra 
 ### Branch protection
 
 Free tier GitHub non permette branch protection rules su repo private. Convenzione: niente push diretto su `main`, solo PR da `develop`. Enforcement = autodisciplina del solo dev. Se in futuro il repo diventa public o si paga GitHub Pro, riabilitare branch protection via `gh api repos/.../branches/main/protection`.
+
+## Recovery da backup R2 (M8 Sub-C, 2026-05-10)
+
+I backup giornalieri vivono su Cloudflare R2 (`anotherbeach-backups`, lifecycle 90gg). Layout: `<YYYY-MM-DD>/<table>.csv` (3 tabelle: customers, transactions, profiles).
+
+### Procedura di recovery (manuale, ~30 min)
+
+Pre-condizione: avere accesso alla dashboard Cloudflare e Supabase, avere localmente `psql` installato.
+
+1. **Scaricare i 3 CSV dalla data target dal bucket R2.**
+   Dashboard R2 -> bucket `anotherbeach-backups` -> selezionare folder data -> download di customers.csv, transactions.csv, profiles.csv.
+
+2. **Decidere il project di destinazione.**
+   - Recovery in-place su PRD: si applica direttamente al project esistente (rischio: distruzione dati attuali; di norma sconsigliato, si crea un project fresh).
+   - Recovery su project nuovo: dashboard Supabase -> New project (es. `AnotherBeachToken-recovery-<date>`).
+
+3. **Applicare schema + RLS sul project di destinazione.**
+   SQL editor del project di destinazione: copiare e applicare `repo/sql/schema.sql` poi `repo/sql/rls.sql`.
+
+4. **Ottenere il connection string Session Pooler del project di destinazione.**
+   Dashboard project -> Settings -> Database -> Connection string -> Session pooler. Sostituire la password.
+
+5. **Caricare i CSV in ordine.**
+   L'ordine e' determinato dalle FK: profiles (referenziato da customers), customers (referenziato da transactions), transactions.
+
+   Da terminale locale (PowerShell):
+   ```
+   $env:DEST_DB_URL = "postgresql://postgres.<ref>:<pwd>@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
+   psql "$env:DEST_DB_URL" -c "\copy public.profiles    FROM 'profiles.csv'    WITH (FORMAT csv, HEADER)"
+   psql "$env:DEST_DB_URL" -c "\copy public.customers   FROM 'customers.csv'   WITH (FORMAT csv, HEADER)"
+   psql "$env:DEST_DB_URL" -c "\copy public.transactions FROM 'transactions.csv' WITH (FORMAT csv, HEADER)"
+   ```
+
+   Expected: ogni comando ritorna `COPY <N>` dove N = righe attese.
+
+6. **Ricreare gli `auth.users` mancanti.**
+   `auth.users` non e' nel backup (vedi SPEC sez 11). Per ogni `profiles.id` che ha bisogno di login: dashboard project -> Auth -> Users -> Add user con stesso UUID e password temporanea. Comunicare agli utenti di cambiare password al primo login.
+
+7. **Smoke test.**
+   Login come super_admin del project di destinazione (puo' essere uno qualunque dei profile super_admin restorati, dopo aver creato il corrispondente auth.users). Verificare che lista clienti sia popolata, che si possa fare un addebito di prova.
+
+### Verifica annuale
+
+A inizio stagione il super_admin esegue un dry-run di recovery sul progetto **DEV** (riusato come "Supabase project secondario" della SPEC sez 10). Procedura:
+
+1. Scaricare i 3 CSV dell'ultimo backup PRD da R2.
+2. Su DEV: pulizia totale via `/admin/season` reset (azzera customers + transactions; profiles intatto).
+3. Applicare la procedura di recovery (step 5-7) usando Session Pooler DEV come destinazione.
+4. Verificare counts post-restore == counts del backup (`select count(*) from customers;` su DEV deve coincidere con il numero di righe in customers.csv meno header).
+5. Reset di nuovo via `/admin/season` per pulire DEV.
+
+Tempo medio: 30-45 min, tutti gli step manuali.
