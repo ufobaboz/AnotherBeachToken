@@ -137,10 +137,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.log(JSON.stringify({ event: 'update-profile', status: 404, error: 'target_not_found', caller_id: caller.userId, target_id: targetId, latency_ms: Date.now() - startedAt }));
     return jsonResponse(errorBody('target_not_found', 'Target non trovato.'), 404);
   }
-  // Branch (b) richiede che il target sia operator
-  if (!isSelf && targetResp.data.role !== 'operator') {
-    console.log(JSON.stringify({ event: 'update-profile', status: 409, error: 'target_not_operator', caller_id: caller.userId, target_id: targetId, latency_ms: Date.now() - startedAt }));
-    return jsonResponse(errorBody('target_not_operator', 'Target non e\' un operator (M6).'), 409);
+  // Branch admin+ ha vincoli sul target.role:
+  //   caller=admin       -> target.role='operator' richiesto.
+  //   caller=super_admin -> target.role in ('operator','admin') richiesto.
+  if (!isSelf) {
+    const targetRole = targetResp.data.role;
+    if (caller.role === 'admin' && targetRole !== 'operator') {
+      console.log(JSON.stringify({ event: 'update-profile', status: 409, error: 'forbidden_role_target', caller_id: caller.userId, target_id: targetId, target_role: targetRole, latency_ms: Date.now() - startedAt }));
+      return jsonResponse(errorBody('forbidden_role_target', 'Solo super_admin puo\' modificare un admin.'), 409);
+    }
+    if (caller.role === 'super_admin' && targetRole !== 'operator' && targetRole !== 'admin') {
+      console.log(JSON.stringify({ event: 'update-profile', status: 409, error: 'forbidden_role_target', caller_id: caller.userId, target_id: targetId, target_role: targetRole, latency_ms: Date.now() - startedAt }));
+      return jsonResponse(errorBody('forbidden_role_target', 'Target non modificabile.'), 409);
+    }
   }
 
   const updResp = await serviceClient

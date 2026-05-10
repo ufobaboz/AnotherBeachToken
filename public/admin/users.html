@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Gestione operator -- Customer QR Tracker</title>
+  <title>Gestione utenti -- Customer QR Tracker</title>
   <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
@@ -16,7 +16,8 @@
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
-    .actions-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .actions-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+    .actions-bar label { display: flex; align-items: center; gap: 0.35rem; margin: 0; }
     .row-actions { display: flex; gap: 0.25rem; flex-wrap: wrap; }
     .row-actions button { margin: 0; padding: 0.25rem 0.6rem; font-size: 0.85rem; }
     article[role="status"] {
@@ -26,45 +27,68 @@
     article.error { background: #8a1f1f; color: #fff; }
     sl-dialog form label { display: block; margin-bottom: 0.5rem; }
     sl-dialog small.hint { color: var(--pico-muted-color); display: block; margin-top: -0.25rem; }
+    tr.deleted { opacity: 0.5; }
+    .role-badge { font-size: 0.85rem; font-family: monospace; }
+    .deleted-mark { font-size: 0.8rem; color: #8a1f1f; margin-left: 0.4rem; }
   </style>
 </head>
 <body x-cloak x-data="adminUsersPage" x-init="init()">
   <nav class="app-nav">
     <h1 x-text="t.adminUsers.title"></h1>
-    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    <div class="nav-actions">
+      <a href="/me" x-text="t.nav.profile"></a>
+      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    </div>
   </nav>
   <main class="container">
     <a href="/customers" x-text="t.adminUsers.backToCustomers"></a>
 
     <div class="actions-bar">
-      <button class="primary" @click="openCreateDialog()" x-text="t.adminUsers.newButton"></button>
+      <button class="primary" @click="openCreateDialog('operator')" x-text="t.adminUsers.newOperatorButton"></button>
+      <button class="primary" x-show="role === 'super_admin'" x-cloak
+              @click="openCreateDialog('admin')" x-text="t.adminUsers.newAdminButton"></button>
+      <label x-show="role === 'super_admin'" x-cloak>
+        <input type="checkbox" x-model="showDeleted" @change="loadUsers()">
+        <span x-text="t.adminUsers.showDeleted"></span>
+      </label>
     </div>
 
     <article role="status" x-show="successMessage" x-cloak x-text="successMessage"></article>
     <article class="error" role="alert" x-show="errorMessage" x-cloak x-text="errorMessage"></article>
 
-    <article x-show="!loading && operators.length === 0" x-cloak>
+    <article x-show="!loading && users.length === 0" x-cloak>
       <p x-text="t.adminUsers.empty"></p>
     </article>
 
-    <table x-show="operators.length > 0" x-cloak>
+    <table x-show="users.length > 0" x-cloak>
       <thead>
         <tr>
           <th x-text="t.adminUsers.columnName"></th>
+          <th x-text="t.adminUsers.columnRole"></th>
           <th x-text="t.adminUsers.columnLastLogin"></th>
           <th x-text="t.adminUsers.columnActions"></th>
         </tr>
       </thead>
       <tbody>
-        <template x-for="op in operators" :key="op.id">
-          <tr>
+        <template x-for="op in users" :key="op.id">
+          <tr :class="op.deleted_at ? 'deleted' : ''">
             <td x-text="op.last_name + ' ' + op.first_name"></td>
+            <td>
+              <span class="role-badge" x-text="op.role"></span>
+              <span x-show="op.deleted_at" x-cloak class="deleted-mark"
+                    x-text="t.adminUsers.deletedBadge(formatDateShort(op.deleted_at))"></span>
+            </td>
             <td x-text="formatLastLogin(op.last_login_at)"></td>
             <td>
-              <div class="row-actions">
-                <button class="secondary" @click="openEditDialog(op)" x-text="t.adminUsers.editButton"></button>
-                <button class="secondary" @click="openResetPwDialog(op)" x-text="t.adminUsers.resetPwButton"></button>
-                <button class="contrast" @click="openDeleteDialog(op)" x-text="t.adminUsers.deleteButton"></button>
+              <div class="row-actions" x-show="!op.deleted_at" x-cloak>
+                <button class="secondary" x-show="canEdit(op)" x-cloak
+                        @click="openEditDialog(op)" x-text="t.adminUsers.editButton"></button>
+                <button class="secondary" x-show="canResetPw(op)" x-cloak
+                        @click="openResetPwDialog(op)" x-text="t.adminUsers.resetPwButton"></button>
+                <button class="secondary" x-show="canChangeRole(op)" x-cloak
+                        @click="openChangeRoleDialog(op)" x-text="t.adminUsers.changeRoleButton"></button>
+                <button class="contrast" x-show="canDelete(op)" x-cloak
+                        @click="openDeleteDialog(op)" x-text="t.adminUsers.deleteButton"></button>
               </div>
             </td>
           </tr>
@@ -72,58 +96,7 @@
       </tbody>
     </table>
 
-    <sl-dialog x-ref="editDialog" :label="t.adminUsers.editTitle">
-      <form @submit.prevent="submitEdit()">
-        <label>
-          <span x-text="t.adminUsers.firstName"></span>
-          <input type="text" x-model="editForm.first_name" required maxlength="120" :disabled="submitting">
-        </label>
-        <label>
-          <span x-text="t.adminUsers.lastName"></span>
-          <input type="text" x-model="editForm.last_name" required maxlength="120" :disabled="submitting">
-        </label>
-        <label>
-          <span x-text="t.adminUsers.notes"></span>
-          <textarea x-model="editForm.notes" rows="2" maxlength="1000" :disabled="submitting"></textarea>
-        </label>
-      </form>
-      <sl-button slot="footer" variant="default" @click="closeEditDialog()" :disabled="submitting"
-                 x-text="t.adminUsers.cancel"></sl-button>
-      <sl-button slot="footer" variant="primary" @click="submitEdit()" :loading="submitting"
-                 x-text="submitting ? t.adminUsers.editSubmitting : t.adminUsers.editSubmit"></sl-button>
-    </sl-dialog>
-
-    <sl-dialog x-ref="resetPwDialog" :label="t.adminUsers.resetPwTitle">
-      <p x-text="resetPwForm.firstName ? t.adminUsers.resetPwBody(resetPwForm.firstName, resetPwForm.lastName) : ''"></p>
-      <form @submit.prevent="submitResetPw()">
-        <label>
-          <span x-text="t.adminUsers.newPassword"></span>
-          <input type="password" x-model="resetPwForm.password" required minlength="8" maxlength="200" :disabled="submitting">
-          <small class="hint" x-text="t.adminUsers.passwordHint"></small>
-        </label>
-        <label>
-          <span x-text="t.adminUsers.confirmPassword"></span>
-          <input type="password" x-model="resetPwForm.confirm" required minlength="8" maxlength="200" :disabled="submitting"
-                 :aria-invalid="resetPwMismatch()">
-          <small x-show="resetPwMismatch()" x-cloak x-text="t.adminUsers.passwordMismatch"></small>
-        </label>
-      </form>
-      <sl-button slot="footer" variant="default" @click="closeResetPwDialog()" :disabled="submitting"
-                 x-text="t.adminUsers.cancel"></sl-button>
-      <sl-button slot="footer" variant="primary" @click="submitResetPw()" :loading="submitting"
-                 :disabled="resetPwMismatch() || !resetPwForm.password"
-                 x-text="submitting ? t.adminUsers.resetPwSubmitting : t.adminUsers.resetPwSubmit"></sl-button>
-    </sl-dialog>
-
-    <sl-dialog x-ref="deleteDialog" :label="t.adminUsers.deleteTitle">
-      <p x-text="deleteForm.firstName ? t.adminUsers.deleteBody(deleteForm.firstName, deleteForm.lastName) : ''"></p>
-      <sl-button slot="footer" variant="default" @click="closeDeleteDialog()" :disabled="submitting"
-                 x-text="t.adminUsers.cancel"></sl-button>
-      <sl-button slot="footer" variant="danger" @click="submitDelete()" :loading="submitting"
-                 x-text="t.adminUsers.deleteConfirm"></sl-button>
-    </sl-dialog>
-
-    <sl-dialog x-ref="createDialog" :label="t.adminUsers.createTitle">
+    <sl-dialog x-ref="createDialog" :label="createForm.role ? t.adminUsers.createTitle(createForm.role) : ''">
       <form @submit.prevent="submitCreate()">
         <label>
           <span x-text="t.adminUsers.email"></span>
@@ -152,6 +125,65 @@
       <sl-button slot="footer" variant="primary" @click="submitCreate()" :loading="submitting"
                  x-text="submitting ? t.adminUsers.createSubmitting : t.adminUsers.createSubmit"></sl-button>
     </sl-dialog>
+
+    <sl-dialog x-ref="editDialog" :label="editForm.role ? t.adminUsers.editTitle(editForm.role) : ''">
+      <form @submit.prevent="submitEdit()">
+        <label>
+          <span x-text="t.adminUsers.firstName"></span>
+          <input type="text" x-model="editForm.first_name" required maxlength="120" :disabled="submitting">
+        </label>
+        <label>
+          <span x-text="t.adminUsers.lastName"></span>
+          <input type="text" x-model="editForm.last_name" required maxlength="120" :disabled="submitting">
+        </label>
+        <label>
+          <span x-text="t.adminUsers.notes"></span>
+          <textarea x-model="editForm.notes" rows="2" maxlength="1000" :disabled="submitting"></textarea>
+        </label>
+      </form>
+      <sl-button slot="footer" variant="default" @click="closeEditDialog()" :disabled="submitting"
+                 x-text="t.adminUsers.cancel"></sl-button>
+      <sl-button slot="footer" variant="primary" @click="submitEdit()" :loading="submitting"
+                 x-text="submitting ? t.adminUsers.editSubmitting : t.adminUsers.editSubmit"></sl-button>
+    </sl-dialog>
+
+    <sl-dialog x-ref="resetPwDialog" :label="t.adminUsers.resetPwTitle">
+      <p x-text="resetPwForm.firstName ? t.adminUsers.resetPwBody(resetPwForm.firstName, resetPwForm.lastName, resetPwForm.role) : ''"></p>
+      <form @submit.prevent="submitResetPw()">
+        <label>
+          <span x-text="t.adminUsers.newPassword"></span>
+          <input type="password" x-model="resetPwForm.password" required minlength="8" maxlength="200" :disabled="submitting">
+          <small class="hint" x-text="t.adminUsers.passwordHint"></small>
+        </label>
+        <label>
+          <span x-text="t.adminUsers.confirmPassword"></span>
+          <input type="password" x-model="resetPwForm.confirm" required minlength="8" maxlength="200" :disabled="submitting"
+                 :aria-invalid="resetPwMismatch()">
+          <small x-show="resetPwMismatch()" x-cloak x-text="t.adminUsers.passwordMismatch"></small>
+        </label>
+      </form>
+      <sl-button slot="footer" variant="default" @click="closeResetPwDialog()" :disabled="submitting"
+                 x-text="t.adminUsers.cancel"></sl-button>
+      <sl-button slot="footer" variant="primary" @click="submitResetPw()" :loading="submitting"
+                 :disabled="resetPwMismatch() || !resetPwForm.password"
+                 x-text="submitting ? t.adminUsers.resetPwSubmitting : t.adminUsers.resetPwSubmit"></sl-button>
+    </sl-dialog>
+
+    <sl-dialog x-ref="deleteDialog" :label="t.adminUsers.deleteTitle">
+      <p x-text="deleteForm.firstName ? t.adminUsers.deleteBody(deleteForm.firstName, deleteForm.lastName, deleteForm.role) : ''"></p>
+      <sl-button slot="footer" variant="default" @click="closeDeleteDialog()" :disabled="submitting"
+                 x-text="t.adminUsers.cancel"></sl-button>
+      <sl-button slot="footer" variant="danger" @click="submitDelete()" :loading="submitting"
+                 x-text="t.adminUsers.deleteConfirm"></sl-button>
+    </sl-dialog>
+
+    <sl-dialog x-ref="changeRoleDialog" :label="t.adminUsers.changeRoleTitle">
+      <p x-text="changeRoleForm.firstName ? t.adminUsers.changeRoleBody(changeRoleForm.firstName, changeRoleForm.lastName, changeRoleForm.fromRole, changeRoleForm.toRole) : ''"></p>
+      <sl-button slot="footer" variant="default" @click="closeChangeRoleDialog()" :disabled="submitting"
+                 x-text="t.adminUsers.cancel"></sl-button>
+      <sl-button slot="footer" variant="primary" @click="submitChangeRole()" :loading="submitting"
+                 x-text="submitting ? t.adminUsers.changeRoleSubmitting : t.adminUsers.changeRoleSubmit"></sl-button>
+    </sl-dialog>
   </main>
 
   <script>
@@ -160,34 +192,48 @@
         return {
           t: window.Strings,
           loading: true,
-          operators: [],
+          users: [],
+          callerId: '',
+          role: '',
+          showDeleted: false,
           submitting: false,
           successMessage: null,
           errorMessage: null,
-          createForm: { email: '', password: '', first_name: '', last_name: '', notes: '' },
-          editForm: { id: '', first_name: '', last_name: '', notes: '' },
-          resetPwForm: { id: '', firstName: '', lastName: '', password: '', confirm: '' },
-          deleteForm: { id: '', firstName: '', lastName: '' },
+          createForm: { role: 'operator', email: '', password: '', first_name: '', last_name: '', notes: '' },
+          editForm: { id: '', role: '', first_name: '', last_name: '', notes: '' },
+          resetPwForm: { id: '', firstName: '', lastName: '', role: '', password: '', confirm: '' },
+          deleteForm: { id: '', firstName: '', lastName: '', role: '' },
+          changeRoleForm: { id: '', firstName: '', lastName: '', fromRole: '', toRole: '' },
           async init() {
             var session = await window.Auth.requireAdminOrAbove();
             if (!session) return;
+            this.callerId = session.user.id;
+            this.role = await window.Auth.getRole();
             document.body.removeAttribute('x-cloak');
-            await this.loadOperators();
+            await this.loadUsers();
             this.loading = false;
           },
-          async loadOperators() {
-            var resp = await window.Auth.client.from('profiles')
-              .select('id, first_name, last_name, role, last_login_at')
-              .eq('role', 'operator')
-              .is('deleted_at', null)
-              .order('last_name', { ascending: true })
-              .order('first_name', { ascending: true });
+          async loadUsers() {
+            var query = window.Auth.client.from('profiles')
+              .select('id, first_name, last_name, role, last_login_at, deleted_at');
+            if (this.role === 'admin') {
+              // admin vede solo operator attivi (RLS profiles_select_admin_active filtra deleted).
+              query = query.eq('role', 'operator').is('deleted_at', null);
+            } else {
+              // super_admin: vede operator + admin; se !showDeleted filtra deleted.
+              query = query.in('role', ['operator', 'admin']);
+              if (!this.showDeleted) query = query.is('deleted_at', null);
+            }
+            query = query.order('role', { ascending: true })
+                         .order('last_name', { ascending: true })
+                         .order('first_name', { ascending: true });
+            var resp = await query;
             if (resp.error) {
-              console.error('[admin-users] loadOperators', resp.error);
-              this.operators = [];
+              console.error('[admin-users] loadUsers', resp.error);
+              this.users = [];
               return;
             }
-            this.operators = resp.data || [];
+            this.users = resp.data || [];
           },
           formatLastLogin(iso) {
             if (!iso) return this.t.adminUsers.neverLogged;
@@ -200,16 +246,41 @@
               return dd + '/' + mm + ' ' + hh + ':' + mi;
             } catch (e) { return iso; }
           },
-          // dialog Create (T9)
-          openCreateDialog() {
-            this.createForm = { email: '', password: '', first_name: '', last_name: '', notes: '' };
+          formatDateShort(iso) {
+            if (!iso) return '';
+            try {
+              var d = new Date(iso);
+              var dd = String(d.getDate()).padStart(2, '0');
+              var mm = String(d.getMonth() + 1).padStart(2, '0');
+              var hh = String(d.getHours()).padStart(2, '0');
+              var mi = String(d.getMinutes()).padStart(2, '0');
+              return dd + '/' + mm + ' ' + hh + ':' + mi;
+            } catch (e) { return iso; }
+          },
+          // Visibility helpers per le azioni di riga
+          canEdit(op) { return !op.deleted_at; },
+          canResetPw(op) { return !op.deleted_at; },
+          canDelete(op) {
+            if (op.deleted_at) return false;
+            if (op.id === this.callerId) return false;
+            if (this.role === 'admin' && op.role !== 'operator') return false;
+            return true;
+          },
+          canChangeRole(op) {
+            if (this.role !== 'super_admin') return false;
+            if (op.deleted_at) return false;
+            if (op.id === this.callerId) return false;
+            if (op.role === 'super_admin') return false;
+            return true;
+          },
+          // Create dialog (parametrico su role)
+          openCreateDialog(role) {
+            this.createForm = { role: role || 'operator', email: '', password: '', first_name: '', last_name: '', notes: '' };
             this.errorMessage = null;
             this.successMessage = null;
             this.$refs.createDialog.show();
           },
-          closeCreateDialog() {
-            this.$refs.createDialog.hide();
-          },
+          closeCreateDialog() { this.$refs.createDialog.hide(); },
           async submitCreate() {
             if (this.submitting) return;
             this.submitting = true;
@@ -219,7 +290,8 @@
               password: this.createForm.password,
               first_name: this.createForm.first_name.trim(),
               last_name: this.createForm.last_name.trim(),
-              notes: (this.createForm.notes || '').trim() || null
+              notes: (this.createForm.notes || '').trim() || null,
+              role: this.createForm.role
             };
             var resp;
             try {
@@ -235,6 +307,8 @@
                 this.errorMessage = this.t.adminUsers.createErrorEmail;
               } else if (resp.body && resp.body.error === 'weak_password') {
                 this.errorMessage = this.t.adminUsers.createErrorWeakPassword;
+              } else if (resp.body && resp.body.error === 'forbidden_role') {
+                this.errorMessage = this.t.adminUsers.createErrorForbidden;
               } else {
                 console.error('[admin-users] create-operator failed', resp);
                 this.errorMessage = this.t.adminUsers.createError;
@@ -242,26 +316,24 @@
               return;
             }
             this.$refs.createDialog.hide();
-            this.successMessage = this.t.adminUsers.createSuccess;
-            await this.loadOperators();
+            this.successMessage = this.t.adminUsers.createSuccess(this.createForm.role);
+            await this.loadUsers();
           },
-          // dialog Edit (T10)
+          // Edit dialog
           openEditDialog(op) {
             this.editForm = {
               id: op.id,
+              role: op.role,
               first_name: op.first_name,
               last_name: op.last_name,
               notes: ''
             };
             this.errorMessage = null;
             this.successMessage = null;
-            // notes non e' nella select di loadOperators per default; carichiamo on-demand
             var self = this;
             window.Auth.client.from('profiles').select('notes').eq('id', op.id).maybeSingle()
               .then(function (resp) {
-                if (!resp.error && resp.data) {
-                  self.editForm.notes = resp.data.notes || '';
-                }
+                if (!resp.error && resp.data) self.editForm.notes = resp.data.notes || '';
                 self.$refs.editDialog.show();
               });
           },
@@ -286,20 +358,24 @@
             }
             this.submitting = false;
             if (resp.status !== 200) {
-              console.error('[admin-users] update-profile failed', resp);
-              this.errorMessage = this.t.adminUsers.editError;
+              if (resp.body && resp.body.error === 'forbidden_role_target') {
+                this.errorMessage = this.t.adminUsers.editForbiddenTarget;
+              } else {
+                console.error('[admin-users] update-profile failed', resp);
+                this.errorMessage = this.t.adminUsers.editError;
+              }
               return;
             }
             this.$refs.editDialog.hide();
-            await this.loadOperators();
+            await this.loadUsers();
           },
-          // dialog Reset password (T11)
+          // Reset password dialog
           resetPwMismatch() {
             if (!this.resetPwForm.password || !this.resetPwForm.confirm) return false;
             return this.resetPwForm.password !== this.resetPwForm.confirm;
           },
           openResetPwDialog(op) {
-            this.resetPwForm = { id: op.id, firstName: op.first_name, lastName: op.last_name, password: '', confirm: '' };
+            this.resetPwForm = { id: op.id, firstName: op.first_name, lastName: op.last_name, role: op.role, password: '', confirm: '' };
             this.errorMessage = null;
             this.successMessage = null;
             this.$refs.resetPwDialog.show();
@@ -307,13 +383,13 @@
           closeResetPwDialog() { this.$refs.resetPwDialog.hide(); },
           async submitResetPw() {
             if (this.submitting) return;
-            if (this.resetPwForm.password !== this.resetPwForm.confirm) return;
+            if (this.resetPwMismatch()) return;
             this.submitting = true;
             this.errorMessage = null;
             var body = { target_id: this.resetPwForm.id, password: this.resetPwForm.password };
             var resp;
             try {
-              resp = await window.Auth.callEdgeFunction('reset-operator-password', body);
+              resp = await window.Auth.callEdgeFunction('reset-password', body);
             } catch (e) {
               this.submitting = false;
               this.errorMessage = this.t.adminUsers.resetPwError;
@@ -321,16 +397,20 @@
             }
             this.submitting = false;
             if (resp.status !== 200) {
-              console.error('[admin-users] reset-operator-password failed', resp);
-              this.errorMessage = this.t.adminUsers.resetPwError;
+              if (resp.body && resp.body.error === 'forbidden_role_target') {
+                this.errorMessage = this.t.adminUsers.resetPwForbiddenTarget;
+              } else {
+                console.error('[admin-users] reset-password failed', resp);
+                this.errorMessage = this.t.adminUsers.resetPwError;
+              }
               return;
             }
             this.$refs.resetPwDialog.hide();
             this.successMessage = this.t.adminUsers.resetPwSuccess;
           },
-          // dialog Delete (T12)
+          // Delete dialog
           openDeleteDialog(op) {
-            this.deleteForm = { id: op.id, firstName: op.first_name, lastName: op.last_name };
+            this.deleteForm = { id: op.id, firstName: op.first_name, lastName: op.last_name, role: op.role };
             this.errorMessage = null;
             this.successMessage = null;
             this.$refs.deleteDialog.show();
@@ -350,12 +430,54 @@
             }
             this.submitting = false;
             if (resp.status !== 200) {
-              console.error('[admin-users] soft-delete-profile failed', resp);
-              this.errorMessage = this.t.adminUsers.deleteError;
+              if (resp.body && resp.body.error === 'forbidden_role_target') {
+                this.errorMessage = this.t.adminUsers.deleteForbiddenTarget;
+              } else {
+                console.error('[admin-users] soft-delete-profile failed', resp);
+                this.errorMessage = this.t.adminUsers.deleteError;
+              }
               return;
             }
             this.$refs.deleteDialog.hide();
-            await this.loadOperators();
+            await this.loadUsers();
+          },
+          // Change role dialog
+          openChangeRoleDialog(op) {
+            var toRole = (op.role === 'operator') ? 'admin' : 'operator';
+            this.changeRoleForm = {
+              id: op.id, firstName: op.first_name, lastName: op.last_name,
+              fromRole: op.role, toRole: toRole
+            };
+            this.errorMessage = null;
+            this.successMessage = null;
+            this.$refs.changeRoleDialog.show();
+          },
+          closeChangeRoleDialog() { this.$refs.changeRoleDialog.hide(); },
+          async submitChangeRole() {
+            if (this.submitting) return;
+            this.submitting = true;
+            this.errorMessage = null;
+            var resp;
+            try {
+              resp = await window.Auth.callEdgeFunction('change-role', {
+                target_id: this.changeRoleForm.id,
+                new_role: this.changeRoleForm.toRole
+              });
+            } catch (e) {
+              this.submitting = false;
+              this.errorMessage = this.t.adminUsers.changeRoleError;
+              return;
+            }
+            this.submitting = false;
+            if (resp.status !== 200) {
+              console.error('[admin-users] change-role failed', resp);
+              this.errorMessage = this.t.adminUsers.changeRoleError;
+              return;
+            }
+            this.$refs.changeRoleDialog.hide();
+            this.successMessage = this.t.adminUsers.changeRoleSuccess(
+              this.changeRoleForm.firstName, this.changeRoleForm.lastName, this.changeRoleForm.toRole);
+            await this.loadUsers();
           },
           async logout() { await window.Auth.signOut(); }
         };

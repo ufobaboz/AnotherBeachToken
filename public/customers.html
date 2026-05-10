@@ -20,7 +20,10 @@
 <body x-cloak x-data="customersPage" x-init="init()">
   <nav class="app-nav">
     <h1 x-text="t.customers.title"></h1>
-    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    <div class="nav-actions">
+      <a href="/me" x-text="t.nav.profile"></a>
+      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    </div>
   </nav>
   <main class="container">
     <div class="actions-bar">

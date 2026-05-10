@@ -20,7 +20,10 @@
 <body x-cloak x-data="scanPage" x-init="init()">
   <nav class="app-nav">
     <h1 x-text="t.scan.title"></h1>
-    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    <div class="nav-actions">
+      <a href="/me" x-text="t.nav.profile"></a>
+      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    </div>
   </nav>
   <main class="container">
     <div id="reader" class="qr-reader" x-show="!error" x-cloak></div>

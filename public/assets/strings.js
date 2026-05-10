@@ -2,6 +2,9 @@
 // Copy italiani per le pagine. ASCII puro: niente em-dash, ellissi,
 // apostrofi tipografici. Le pagine consumano window.Strings.<section>.<key>.
 window.Strings = {
+  nav: {
+    profile: 'Profilo'
+  },
   app: {
     title: 'Customer QR Tracker'
   },
@@ -138,17 +141,27 @@ window.Strings = {
     raceReload: 'Ricarica chiusura'
   },
   adminUsers: {
-    title: 'Gestione operator',
+    title: 'Gestione utenti',
     backToCustomers: 'Torna alla lista clienti',
-    newButton: '+ Nuovo operator',
-    empty: 'Nessun operator registrato.',
+    newOperatorButton: '+ Nuovo operator',
+    newAdminButton: '+ Nuovo admin',
+    showDeleted: 'Mostra cancellati',
+    empty: 'Nessun utente registrato.',
     columnName: 'Nome',
+    columnRole: 'Ruolo',
     columnLastLogin: 'Ultimo accesso',
     columnActions: 'Azioni',
+    roleOperator: 'operator',
+    roleAdmin: 'admin',
+    roleSuperAdmin: 'super_admin',
+    deletedBadge: function (date) {
+      return 'CANCELLATO ' + date;
+    },
     neverLogged: 'mai',
     editButton: 'Modifica',
     resetPwButton: 'Reset password',
     deleteButton: 'Cancella',
+    changeRoleButton: 'Cambia ruolo',
     cancel: 'Annulla',
     email: 'Email',
     password: 'Password iniziale',
@@ -159,31 +172,61 @@ window.Strings = {
     firstName: 'Nome',
     lastName: 'Cognome',
     notes: 'Note (opzionale)',
-    createTitle: 'Nuovo operator',
+    createTitle: function (role) {
+      return 'Nuovo ' + role;
+    },
     createSubmit: 'Crea',
     createSubmitting: 'Creazione in corso...',
-    createSuccess: 'Operator creato. Comunica la password al neo-operator via canale fuori app.',
+    createSuccess: function (role) {
+      return role.charAt(0).toUpperCase() + role.slice(1) + ' creato. Comunica la password via canale fuori app.';
+    },
     createErrorEmail: 'Email gia\' registrata.',
     createErrorWeakPassword: 'Password troppo debole. Usa almeno 8 caratteri.',
+    createErrorForbidden: 'Solo super_admin puo\' creare admin.',
     createError: 'Errore in fase di creazione. Riprova.',
-    editTitle: 'Modifica operator',
+    editTitle: function (role) {
+      return 'Modifica ' + role;
+    },
     editSubmit: 'Salva',
     editSubmitting: 'Salvataggio in corso...',
     editError: 'Errore in fase di modifica. Riprova.',
+    editForbiddenTarget: 'Solo super_admin puo\' modificare un admin.',
     resetPwTitle: 'Reset password',
-    resetPwBody: function (firstName, lastName) {
-      return 'Imposta una nuova password per ' + firstName + ' ' + lastName + '. Comunicagliela via canale fuori app.';
+    resetPwBody: function (firstName, lastName, role) {
+      return 'Imposta una nuova password per ' + firstName + ' ' + lastName
+           + ' (' + role + '). Comunicagliela via canale fuori app.';
     },
     resetPwSubmit: 'Reset',
     resetPwSubmitting: 'Reset in corso...',
-    resetPwSuccess: 'Password aggiornata. Comunicala al neo-operator.',
+    resetPwSuccess: 'Password aggiornata. Comunicala via canale fuori app.',
     resetPwError: 'Errore in fase di reset. Riprova.',
+    resetPwForbiddenTarget: 'Solo super_admin puo\' resettare la password di un admin.',
     deleteTitle: 'Conferma cancellazione',
-    deleteBody: function (firstName, lastName) {
-      return 'Cancellare operator ' + firstName + ' ' + lastName + '? L\'operator non potra\' piu\' loggarsi. Reversibile solo via SQL editor da super_admin.';
+    deleteBody: function (firstName, lastName, role) {
+      return 'Cancellare ' + role + ' ' + firstName + ' ' + lastName + '? '
+           + role + ' non potra\' piu\' loggarsi. Reversibile solo via SQL editor da super_admin.';
     },
     deleteConfirm: 'Cancella',
-    deleteError: 'Errore in fase di cancellazione. Riprova.'
+    deleteError: 'Errore in fase di cancellazione. Riprova.',
+    deleteForbiddenTarget: 'Solo super_admin puo\' cancellare un admin.',
+    changeRoleTitle: 'Cambia ruolo',
+    changeRoleBody: function (firstName, lastName, fromRole, toRole) {
+      if (toRole === 'admin') {
+        return 'Promuovere ' + firstName + ' ' + lastName
+             + ' a admin? Potra\' chiudere conti e gestire operator.'
+             + ' Dovra\' rilogga per applicare il nuovo ruolo.';
+      }
+      return 'Retrocedere ' + firstName + ' ' + lastName
+           + ' a operator? Perdera\' accesso a /checkout e /admin/users.'
+           + ' Dovra\' rilogga per applicare il nuovo ruolo.';
+    },
+    changeRoleSubmit: 'Conferma',
+    changeRoleSubmitting: 'Aggiornamento in corso...',
+    changeRoleSuccess: function (firstName, lastName, newRole) {
+      return firstName + ' ' + lastName + ' e\' ora ' + newRole
+           + '. Dovra\' rilogga per applicare il nuovo ruolo.';
+    },
+    changeRoleError: 'Errore in fase di cambio ruolo. Riprova.'
   },
   scan: {
     title: 'Scansiona QR',
@@ -191,6 +234,32 @@ window.Strings = {
     invalidQr: 'QR non valido. Inquadra un QR cliente.',
     notFound: 'QR non riconosciuto. Cliente inesistente o cancellato.',
     backToList: 'Torna alla lista'
+  },
+  me: {
+    title: 'Profilo',
+    back: 'Torna indietro',
+    loadError: 'Errore in fase di caricamento del profilo. Ricarica la pagina.',
+    fields: {
+      role: 'Ruolo',
+      email: 'Email',
+      lastLogin: 'Ultimo accesso',
+      notes: 'Note',
+      neverLogged: 'mai'
+    },
+    changePasswordButton: 'Cambia password',
+    changePasswordTitle: 'Cambia password',
+    oldPassword: 'Vecchia password',
+    newPassword: 'Nuova password',
+    confirmPassword: 'Conferma nuova password',
+    passwordMismatch: 'Le password non coincidono.',
+    passwordHint: 'Almeno 8 caratteri.',
+    changePasswordSubmit: 'Cambia password',
+    changePasswordSubmitting: 'Aggiornamento in corso...',
+    changePasswordCancel: 'Annulla',
+    changePasswordSuccess: 'Password aggiornata.',
+    changePasswordInvalidOld: 'Vecchia password sbagliata.',
+    changePasswordWeak: 'Nuova password troppo debole. Usa almeno 8 caratteri.',
+    changePasswordError: 'Errore in fase di cambio password. Riprova.'
   },
   logout: 'Esci',
   probe: {

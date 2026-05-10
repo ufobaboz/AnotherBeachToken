@@ -8,14 +8,17 @@
 // si aggiorna -- non si aggiunge "stesso comportamento, milestone nuova".
 
 import { test, expect, Route } from '@playwright/test';
-import { loginAsSuperAdmin, loginAsOperator } from '../helpers/auth';
+import { loginAsSuperAdmin, loginAsOperator, loginAsAdmin } from '../helpers/auth';
 import {
   createTestCustomer,
   softDeleteTestCustomer,
   chargeAmount,
   getCustomerQrToken,
   createTestOperator,
-  softDeleteTestOperator
+  softDeleteTestOperator,
+  createTestAdmin,
+  softDeleteTestProfile,
+  changeRoleViaEdge
 } from '../helpers/fixtures';
 
 // ----------------------------------------------------------------------
@@ -397,9 +400,9 @@ test.describe('Chiusura conto', () => {
 });
 
 // ----------------------------------------------------------------------
-// Gestione operator
+// Gestione utenti
 // ----------------------------------------------------------------------
-test.describe('Gestione operator', () => {
+test.describe('Gestione utenti', () => {
 
   test('create-operator: 401 senza Authorization', async ({ request }) => {
     const resp = await request.post(
@@ -477,13 +480,13 @@ test.describe('Gestione operator', () => {
     }
   });
 
-  test('reset-operator-password: vecchia FAIL nuova OK', async ({ page, browser }) => {
+  test('reset-password: vecchia FAIL nuova OK', async ({ page, browser }) => {
     await loginAsSuperAdmin(page);
     const op = await createTestOperator(page);
     try {
       const newPwd = 'NewPwd' + Date.now();
       const resp = await page.evaluate(async (body) => {
-        return await window.Auth.callEdgeFunction('reset-operator-password', body);
+        return await window.Auth.callEdgeFunction('reset-password', body);
       }, { target_id: op.id, password: newPwd });
       expect(resp.status).toBe(200);
       // login con vecchia password -> FAIL (alert visibile)
@@ -550,7 +553,7 @@ test.describe('Gestione operator', () => {
     await page.goto('/admin/users');
     // aspetta che Alpine rimuova x-cloak dal body (guard ok -> removeAttribute)
     await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
-    await expect(page.locator('h1')).toHaveText('Gestione operator', { timeout: 5_000 });
+    await expect(page.locator('h1')).toHaveText('Gestione utenti', { timeout: 5_000 });
     await expect(page.locator('a[href="/customers"]')).toBeVisible();
   });
 
@@ -670,6 +673,330 @@ test.describe('Gestione operator', () => {
       }, lastName);
     } finally {
       if (createdId) await softDeleteTestOperator(page, createdId);
+    }
+  });
+
+  test('super_admin crea admin via dialog -> riga in lista con ruolo admin', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/admin/users');
+    const ts = Date.now();
+    const lastName = `ZZ-E2E-ADM-DLG-${ts}`;
+    const email = `e2e-adm-dlg-${ts}@example.com`;
+    let createdId: string | null = null;
+    try {
+      await page.locator('button.primary', { hasText: '+ Nuovo admin' }).click();
+      const dialog = page.locator('sl-dialog[label="Nuovo admin"]');
+      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      await dialog.locator('input[type="email"]').fill(email);
+      await dialog.locator('input[type="password"]').fill('TestPwd1234');
+      const textInputs = dialog.locator('input[type="text"]');
+      await textInputs.nth(0).fill('E2E');
+      await textInputs.nth(1).fill(lastName);
+      await dialog.locator('sl-button[variant="primary"]').click();
+      await expect(page.locator('article[role="status"]')).toBeVisible({ timeout: 10_000 });
+      const row = page.locator('table tbody tr', { hasText: lastName });
+      await expect(row).toBeVisible({ timeout: 5_000 });
+      await expect(row.locator('.role-badge')).toHaveText('admin');
+      createdId = await page.evaluate(async (ln) => {
+        const r = await window.Auth.client.from('profiles').select('id').eq('last_name', ln).maybeSingle();
+        return (r.data as { id: string } | null)?.id || null;
+      }, lastName);
+    } finally {
+      if (createdId) await softDeleteTestProfile(page, createdId);
+    }
+  });
+
+  test('admin loggato non vede tab admin / bottone Cambia ruolo / checkbox cancellati', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const adm = await createTestAdmin(page);
+    try {
+      // logout super_admin
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await page.goto('/login');
+      await loginAsAdmin(page, adm.email, adm.password);
+      await page.goto('/admin/users');
+      await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+      // bottone "+ Nuovo admin" presente in DOM ma nascosto via x-show (super_admin only)
+      await expect(page.locator('button.primary', { hasText: '+ Nuovo admin' })).toBeHidden();
+      // checkbox 'Mostra cancellati' presente in DOM ma nascosto via x-show (super_admin only)
+      await expect(page.locator('label', { hasText: 'Mostra cancellati' })).toBeHidden();
+      // 'Cambia ruolo' non presente in nessuna riga (operator-only list, no row eligible)
+      await expect(page.locator('button', { hasText: 'Cambia ruolo' })).toHaveCount(0);
+    } finally {
+      // re-login super_admin per cleanup
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await page.goto('/login');
+      } catch (_e) { /* ignore */ }
+      await loginAsSuperAdmin(page);
+      await softDeleteTestProfile(page, adm.id);
+    }
+  });
+
+  test('change-role: super_admin promuove operator -> admin (via edge)', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      await changeRoleViaEdge(page, op.id, 'admin');
+      // verifica via SELECT
+      const profile = await page.evaluate(async (id) => {
+        const r = await window.Auth.client.from('profiles').select('role').eq('id', id).maybeSingle();
+        return r.data;
+      }, op.id);
+      expect((profile as { role: string }).role).toBe('admin');
+    } finally {
+      await softDeleteTestProfile(page, op.id);
+    }
+  });
+
+  test('change-role: super_admin retrocede admin -> operator (via edge)', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const adm = await createTestAdmin(page);
+    try {
+      await changeRoleViaEdge(page, adm.id, 'operator');
+      const profile = await page.evaluate(async (id) => {
+        const r = await window.Auth.client.from('profiles').select('role').eq('id', id).maybeSingle();
+        return r.data;
+      }, adm.id);
+      expect((profile as { role: string }).role).toBe('operator');
+    } finally {
+      await softDeleteTestProfile(page, adm.id);
+    }
+  });
+
+  test('change-role: target_self 409 (super_admin auto-degrade rifiutato)', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const sessionUserId = await page.evaluate(async () => {
+      const s = await window.Auth.client.auth.getSession();
+      return s.data.session?.user.id;
+    });
+    expect(sessionUserId).toBeTruthy();
+    const resp = await page.evaluate(async (target_id) => {
+      return await window.Auth.callEdgeFunction('change-role', { target_id, new_role: 'admin' });
+    }, sessionUserId as string);
+    expect(resp.status).toBe(409);
+    const body = resp.body as Record<string, unknown>;
+    expect(body.error).toBe('target_self');
+  });
+
+  test('change-role: same_role 400', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      const resp = await page.evaluate(async (body) => {
+        return await window.Auth.callEdgeFunction('change-role', body);
+      }, { target_id: op.id, new_role: 'operator' });
+      expect(resp.status).toBe(400);
+      const body = resp.body as Record<string, unknown>;
+      expect(body.error).toBe('same_role');
+    } finally {
+      await softDeleteTestProfile(page, op.id);
+    }
+  });
+
+  test('change-role: invalid_new_role 400', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      const resp = await page.evaluate(async (body) => {
+        return await window.Auth.callEdgeFunction('change-role', body);
+      }, { target_id: op.id, new_role: 'super_admin' });
+      expect(resp.status).toBe(400);
+      const body = resp.body as Record<string, unknown>;
+      expect(body.error).toBe('invalid_new_role');
+    } finally {
+      await softDeleteTestProfile(page, op.id);
+    }
+  });
+
+  test('change-role: forbidden_role per caller admin', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const adm = await createTestAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      // logout super_admin -> login admin
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await page.goto('/login');
+      await loginAsAdmin(page, adm.email, adm.password);
+      const resp = await page.evaluate(async (body) => {
+        return await window.Auth.callEdgeFunction('change-role', body);
+      }, { target_id: op.id, new_role: 'admin' });
+      expect(resp.status).toBe(403);
+      const body = resp.body as Record<string, unknown>;
+      expect(body.error).toBe('forbidden_role');
+    } finally {
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await page.goto('/login');
+      } catch (_e) { /* ignore */ }
+      await loginAsSuperAdmin(page);
+      await softDeleteTestProfile(page, adm.id);
+      await softDeleteTestProfile(page, op.id);
+    }
+  });
+
+  test('toggle Mostra cancellati: riga visibile se on, assente se off', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    // soft-delete subito per averla cancellata
+    await softDeleteTestProfile(page, op.id);
+    try {
+      await page.goto('/admin/users');
+      await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+      // off (default): riga non visibile
+      await expect(page.locator('table tbody tr', { hasText: op.lastName })).toHaveCount(0);
+      // on: riga visibile + classe deleted
+      await page.locator('input[type=checkbox]').check();
+      await page.waitForTimeout(300); // attesa loadUsers
+      const row = page.locator('table tbody tr', { hasText: op.lastName });
+      await expect(row).toBeVisible({ timeout: 10_000 });
+      await expect(row).toHaveClass(/deleted/);
+      // off: riga sparisce
+      await page.locator('input[type=checkbox]').uncheck();
+      await page.waitForTimeout(300);
+      await expect(page.locator('table tbody tr', { hasText: op.lastName })).toHaveCount(0);
+    } finally {
+      // gia' soft-deleted
+    }
+  });
+
+  test('admin tenta target admin via update-profile -> forbidden_role_target', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const admA = await createTestAdmin(page);
+    const admB = await createTestAdmin(page);
+    try {
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await page.goto('/login');
+      await loginAsAdmin(page, admA.email, admA.password);
+      const resp = await page.evaluate(async (body) => {
+        return await window.Auth.callEdgeFunction('update-profile', body);
+      }, { target_id: admB.id, first_name: 'Hijack', last_name: admB.lastName });
+      expect(resp.status).toBe(409);
+      const body = resp.body as Record<string, unknown>;
+      expect(body.error).toBe('forbidden_role_target');
+    } finally {
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await page.goto('/login');
+      } catch (_e) { /* ignore */ }
+      await loginAsSuperAdmin(page);
+      await softDeleteTestProfile(page, admA.id);
+      await softDeleteTestProfile(page, admB.id);
+    }
+  });
+
+});
+
+// ----------------------------------------------------------------------
+// Profilo proprio (/me)
+// ----------------------------------------------------------------------
+test.describe('Profilo proprio', () => {
+
+  test('/me come super_admin: anagrafica readonly + bottone Cambia password', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/me');
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    await expect(page.locator('h1')).toHaveText('Profilo');
+    // anagrafica visibile: h2 con nome cognome (selettore stretto su x-text per escludere h2#title del dialog Shoelace)
+    await expect(page.locator('main h2[x-text]')).toBeVisible({ timeout: 5_000 });
+    // dl con role/email/last_login
+    const dl = page.locator('dl.profile-fields');
+    await expect(dl).toContainText('super_admin');
+    await expect(dl).toContainText(process.env.TEST_SUPER_ADMIN_EMAIL!);
+    // bottone Cambia password
+    await expect(page.locator('button.primary', { hasText: 'Cambia password' })).toBeVisible();
+    // nessun input editabile (no input text required visibili)
+    await expect(page.locator('main input[type=text][required]')).toHaveCount(0);
+  });
+
+  test('/me change-own-password vecchia sbagliata -> errore inline', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/me');
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    await page.locator('button.primary', { hasText: 'Cambia password' }).click();
+    const dialog = page.locator('sl-dialog[label="Cambia password"]');
+    await expect(dialog).toBeVisible();
+    const inputs = dialog.locator('input[type=password]');
+    await inputs.nth(0).fill('definitely-wrong-old-' + Date.now());
+    const newPwd = 'NeverApplied' + Date.now();
+    await inputs.nth(1).fill(newPwd);
+    await inputs.nth(2).fill(newPwd);
+    await dialog.locator('sl-button[variant="primary"]').click();
+    await expect(page.locator('article.error[role=alert]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('article.error[role=alert]')).toContainText('Vecchia password sbagliata');
+    // sanity: la password reale del super_admin di test e' invariata (login OK)
+    await page.evaluate(() => {
+      Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+    });
+    await page.goto('/login');
+    await page.locator('input[type=email]').fill(process.env.TEST_SUPER_ADMIN_EMAIL!);
+    await page.locator('input[type=password]').fill(process.env.TEST_SUPER_ADMIN_PASSWORD!);
+    await Promise.all([
+      page.waitForURL(/\/customers$/, { timeout: 15_000 }),
+      page.locator('button[type=submit]').click(),
+    ]);
+  });
+
+  test('/me change-own-password happy path su operator fresh', async ({ page, browser }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      // logout super_admin -> login operator
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await page.goto('/login');
+      await loginAsOperator(page, op.email, op.password);
+      // visita /me (operator OK: requireAuth basta)
+      await page.goto('/me');
+      await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+      // dialog cambio password
+      await page.locator('button.primary', { hasText: 'Cambia password' }).click();
+      const dialog = page.locator('sl-dialog[label="Cambia password"]');
+      await expect(dialog).toBeVisible();
+      const newPwd = 'NewOpPwd' + Date.now();
+      const inputs = dialog.locator('input[type=password]');
+      await inputs.nth(0).fill(op.password);
+      await inputs.nth(1).fill(newPwd);
+      await inputs.nth(2).fill(newPwd);
+      await dialog.locator('sl-button[variant="primary"]').click();
+      // success message su /me
+      await expect(page.locator('article[role=status]')).toBeVisible({ timeout: 10_000 });
+      // verify: login con vecchia FAIL, con nuova OK
+      const ctx = await browser.newContext();
+      const opPage = await ctx.newPage();
+      try {
+        await opPage.goto('/login');
+        await opPage.locator('input[type=email]').fill(op.email);
+        await opPage.locator('input[type=password]').fill(op.password);
+        await opPage.locator('button[type=submit]').click();
+        await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
+        await opPage.locator('input[type=password]').fill(newPwd);
+        await opPage.locator('button[type=submit]').click();
+        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+      } finally { await ctx.close(); }
+    } finally {
+      // re-login super_admin per cleanup
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await page.goto('/login');
+      } catch (_e) { /* ignore */ }
+      await loginAsSuperAdmin(page);
+      await softDeleteTestProfile(page, op.id);
     }
   });
 
