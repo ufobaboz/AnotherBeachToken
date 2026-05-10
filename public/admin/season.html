@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fine stagione -- Customer QR Tracker</title>
+  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script src="/assets/csv.js"></script>
+  <script type="module" src="/vendor/shoelace/2.20.1/components/dialog/dialog.js"></script>
+  <script type="module" src="/vendor/shoelace/2.20.1/components/button/button.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    section.archive, section.reset { margin-top: 1.5rem; padding: 1rem; border-radius: 0.3rem; }
+    section.archive { background: var(--pico-card-background-color); }
+    section.reset { background: #2a1414; border: 1px solid #8a1f1f; }
+    section.reset h2 { color: #f08080; }
+    .download-row { display: flex; flex-direction: column; gap: 0.5rem; max-width: 320px; }
+    .download-row button { margin: 0; }
+    .download-row small { color: var(--pico-muted-color); }
+    article[role="status"] { padding: 0.6rem 0.9rem; margin-bottom: 1rem; background: #1c5d31; color: #fff; border-radius: 0.3rem; }
+    article.error { background: #8a1f1f; color: #fff; }
+    sl-dialog form label { display: block; margin-bottom: 0.5rem; }
+    sl-dialog input.confirm-input { font-family: monospace; font-size: 1.05rem; width: 100%; }
+  </style>
+</head>
+<body x-cloak x-data="adminSeasonPage" x-init="init()">
+  <nav class="app-nav">
+    <h1 x-text="t.adminSeason.title"></h1>
+    <div class="nav-actions">
+      <a href="/admin/users" x-text="t.nav.users"></a>
+      <a href="/me" x-text="t.nav.profile"></a>
+      <a target="_blank" rel="noopener noreferrer"
+         href="https://dash.cloudflare.com/9aea46551a6124e9e4d0233168e81f47/r2/default/buckets/anotherbeach-backups"
+         x-text="t.nav.backupR2"></a>
+      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <a href="/customers" x-text="t.adminSeason.backToCustomers"></a>
+
+    <article role="status" x-show="successMessage" x-cloak x-text="successMessage"></article>
+    <article class="error" role="alert" x-show="errorMessage" x-cloak x-text="errorMessage"></article>
+
+    <p x-text="t.adminSeason.intro"></p>
+
+    <section class="archive">
+      <h2 x-text="t.adminSeason.archiveTitle"></h2>
+      <div class="download-row">
+        <button class="primary" :disabled="downloading.customers"
+                @click="downloadTable('customers')"
+                x-text="downloading.customers ? t.adminSeason.downloadingCustomers : t.adminSeason.downloadCustomers"></button>
+        <button class="primary" :disabled="downloading.transactions"
+                @click="downloadTable('transactions')"
+                x-text="downloading.transactions ? t.adminSeason.downloadingTransactions : t.adminSeason.downloadTransactions"></button>
+        <button class="primary" :disabled="downloading.profiles"
+                @click="downloadTable('profiles')"
+                x-text="downloading.profiles ? t.adminSeason.downloadingProfiles : t.adminSeason.downloadProfiles"></button>
+        <small x-text="t.adminSeason.archiveHint"></small>
+      </div>
+    </section>
+
+    <section class="reset">
+      <h2 x-text="t.adminSeason.resetTitle"></h2>
+      <p x-text="t.adminSeason.resetIntro"></p>
+      <button class="contrast" @click="openResetDialog()" x-text="t.adminSeason.resetButton"></button>
+    </section>
+
+    <sl-dialog x-ref="resetDialog" :label="t.adminSeason.resetDialogTitle">
+      <p x-text="t.adminSeason.resetDialogBody"></p>
+      <p>
+        <span x-text="t.adminSeason.resetConfirmHint"></span>
+        <strong x-text="t.adminSeason.resetConfirmString"></strong>
+      </p>
+      <input type="text" class="confirm-input" x-model="confirmText"
+             :placeholder="t.adminSeason.resetConfirmPlaceholder"
+             :disabled="submitting" autocomplete="off">
+      <sl-button slot="footer" variant="default" @click="closeResetDialog()" :disabled="submitting"
+                 x-text="t.adminSeason.cancel"></sl-button>
+      <sl-button slot="footer" variant="danger" @click="submitReset()"
+                 :loading="submitting"
+                 :disabled="confirmText !== t.adminSeason.resetConfirmString || submitting"
+                 x-text="submitting ? t.adminSeason.resetting : t.adminSeason.confirmReset"></sl-button>
+    </sl-dialog>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('adminSeasonPage', function () {
+        return {
+          t: window.Strings,
+          downloading: { customers: false, transactions: false, profiles: false },
+          submitting: false,
+          confirmText: '',
+          successMessage: null,
+          errorMessage: null,
+          async init() {
+            var session = await window.Auth.requireSuperAdmin();
+            if (!session) return;
+            document.body.removeAttribute('x-cloak');
+          },
+          fallbackColumns(table) {
+            if (table === 'customers') {
+              return ['id', 'qr_token', 'first_name', 'last_name', 'email', 'phone', 'notes',
+                      'created_by_id', 'last_modified_by_id', 'last_modified_at',
+                      'created_at', 'deleted_at'];
+            }
+            if (table === 'transactions') {
+              return ['id', 'customer_id', 'user_id', 'type', 'amount', 'reversal_of_id',
+                      'paid', 'paid_at', 'payment_method', 'paid_by_id', 'notes',
+                      'created_at', 'deleted_at'];
+            }
+            if (table === 'profiles') {
+              return ['id', 'first_name', 'last_name', 'role', 'last_login_at', 'notes',
+                      'created_at', 'last_modified_by_id', 'last_modified_at', 'deleted_at'];
+            }
+            return [];
+          },
+          async downloadTable(table) {
+            if (this.downloading[table]) return;
+            this.downloading[table] = true;
+            this.errorMessage = null;
+            try {
+              var resp = await window.Auth.client.from(table)
+                .select('*')
+                .order('created_at', { ascending: true })
+                .range(0, 49999);
+              if (resp.error) throw resp.error;
+              var rows = resp.data || [];
+              var columns = rows.length > 0 ? Object.keys(rows[0]) : this.fallbackColumns(table);
+              var csv = window.Csv.serialize(rows, columns);
+              var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+              var url = URL.createObjectURL(blob);
+              var d = new Date();
+              var dd = String(d.getDate()).padStart(2, '0');
+              var mm = String(d.getMonth() + 1).padStart(2, '0');
+              var yyyy = d.getFullYear();
+              var filename = table + '-' + yyyy + '-' + mm + '-' + dd + '.csv';
+              var a = document.createElement('a');
+              a.href = url; a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              this.successMessage = filename + ' (' + this.t.adminSeason.rowsCount(rows.length) + ')';
+            } catch (e) {
+              console.error('[admin-season] download', table, e);
+              this.errorMessage = this.t.adminSeason.downloadError;
+            } finally {
+              this.downloading[table] = false;
+            }
+          },
+          openResetDialog() {
+            this.confirmText = '';
+            this.errorMessage = null;
+            this.successMessage = null;
+            this.$refs.resetDialog.show();
+          },
+          closeResetDialog() {
+            if (this.submitting) return;
+            this.$refs.resetDialog.hide();
+          },
+          async submitReset() {
+            if (this.submitting) return;
+            if (this.confirmText !== this.t.adminSeason.resetConfirmString) return;
+            this.submitting = true;
+            this.errorMessage = null;
+            try {
+              var resp = await window.Auth.callEdgeFunction('reset-season', {});
+              if (resp.status !== 200) {
+                console.error('[admin-season] reset-season failed', resp);
+                this.errorMessage = this.t.adminSeason.resetError;
+                return;
+              }
+              this.$refs.resetDialog.hide();
+              this.confirmText = '';
+              this.successMessage = this.t.adminSeason.resetSuccess;
+            } catch (e) {
+              console.error('[admin-season] reset exception', e);
+              this.errorMessage = this.t.adminSeason.resetError;
+            } finally {
+              this.submitting = false;
+            }
+          },
+          async logout() { await window.Auth.signOut(); }
+        };
+      });
+    });
+  </script>
+</body>
+</html>
