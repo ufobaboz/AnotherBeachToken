@@ -1124,12 +1124,16 @@ test.describe('Fine stagione (M8 Sub-A)', () => {
     await expect(dialog).toBeVisible({ timeout: 8_000 });
     const dangerBtn = page.locator('sl-dialog sl-button[variant="danger"]');
     const confirmInput = page.locator('input.confirm-input');
+    // Sl-button reflecta il flag boolean disabled come attribute "disabled" (valore "disabled"),
+    // quindi toHaveAttribute('disabled', '') fallirebbe sul valore esatto. Si interroga
+    // direttamente la property `.disabled` del custom element via evaluate + expect.poll.
+    const isDangerDisabled = () => dangerBtn.evaluate((el: { disabled: boolean }) => el.disabled);
     // Input sbagliato (lowercase) -> bottone danger disabled.
     await confirmInput.fill('reset stagione');
-    await expect(dangerBtn).toHaveAttribute('disabled', '');
+    await expect.poll(isDangerDisabled, { timeout: 8_000 }).toBe(true);
     // Input corretto -> bottone abilitato.
     await confirmInput.fill('RESET STAGIONE');
-    await expect(dangerBtn).not.toHaveAttribute('disabled', '');
+    await expect.poll(isDangerDisabled, { timeout: 8_000 }).toBe(false);
     // Chiude il dialog senza eseguire il reset.
     await page.locator('sl-dialog sl-button[variant="default"]').click();
   });
@@ -1138,14 +1142,10 @@ test.describe('Fine stagione (M8 Sub-A)', () => {
   // Deve essere l'ULTIMO test dell'intera suite -- nessun test successivo deve girare.
   test('reset reale: pre-fixture, conferma, post-counts a zero', async ({ page }) => {
     await loginAsSuperAdmin(page);
-    // Pre-fixture: almeno 1 customer + 1 transaction su DEV.
+    // Pre-fixture: almeno 1 customer + 1 transaction su DEV. Le helper hanno gia'
+    // waitForURL/waitForResponse sui POST -> non serve un check supplementare via probe.
     const c1 = await createTestCustomer(page);
     await chargeAmount(page, c1.id, '5', '50');
-    // Sanity check pre-reset: probe mostra almeno 1 customer attivo.
-    await page.goto('/probe');
-    await expect(page.locator('.check .badge.badge-pending').first()).toHaveCount(0, { timeout: 30_000 }).catch(() => {});
-    const probeText = await page.locator('body').innerText();
-    expect(probeText).toMatch(/customers=[1-9]\d* attivi/);
     // Naviga alla pagina fine stagione.
     await page.goto('/admin/season');
     await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
