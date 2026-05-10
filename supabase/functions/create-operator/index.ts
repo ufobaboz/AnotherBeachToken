@@ -33,6 +33,7 @@ interface CreateOperatorBody {
   first_name?: string;
   last_name?: string;
   notes?: string | null;
+  role?: string;
 }
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -129,6 +130,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse(errorBody('bad_request', 'Note troppo lunghe (max 1000).'), 400);
   }
 
+  const role = (body.role || 'operator').trim();
+  if (role !== 'operator' && role !== 'admin') {
+    console.log(JSON.stringify({ event: 'create-operator', status: 400, error: 'bad_request', message: 'invalid_role', caller_id: caller.userId, latency_ms: Date.now() - startedAt }));
+    return jsonResponse(errorBody('bad_request', 'role deve essere operator o admin.'), 400);
+  }
+  if (role === 'admin' && caller.role !== 'super_admin') {
+    console.log(JSON.stringify({ event: 'create-operator', status: 403, error: 'forbidden_role', caller_id: caller.userId, latency_ms: Date.now() - startedAt }));
+    return jsonResponse(errorBody('forbidden_role', 'Solo super_admin puo\' creare admin.'), 403);
+  }
+
   // 1. createUser
   const createResp = await serviceClient.auth.admin.createUser({
     email,
@@ -161,8 +172,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     id: newUserId,
     first_name: firstName,
     last_name: lastName,
-    role: 'operator',
-    notes
+    role: role,
+    notes,
+    last_modified_by_id: caller.userId
   });
 
   if (insertResp.error) {
@@ -197,7 +209,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     status: 200,
     caller_id: caller.userId,
     new_user_id: newUserId,
-    role: 'operator',
+    role: role,
     latency_ms: Date.now() - startedAt
   }));
 

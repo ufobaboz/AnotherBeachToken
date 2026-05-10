@@ -25,7 +25,10 @@
 <body x-cloak x-data="probePage" x-init="init()">
   <nav class="app-nav">
     <h1 x-text="t.probe.title"></h1>
-    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    <div class="nav-actions">
+      <a href="/me" x-text="t.nav.profile"></a>
+      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    </div>
   </nav>
 
   <main class="container">

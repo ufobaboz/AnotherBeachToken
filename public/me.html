@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profilo -- Customer QR Tracker</title>
+  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script type="module" src="/vendor/shoelace/2.20.1/components/dialog/dialog.js"></script>
+  <script type="module" src="/vendor/shoelace/2.20.1/components/button/button.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    article[role="status"] {
+      padding: 0.6rem 0.9rem; margin-bottom: 1rem;
+      background: #1c5d31; color: #fff; border-radius: 0.3rem;
+    }
+    article.error { background: #8a1f1f; color: #fff; }
+    dl.profile-fields dt { font-weight: bold; margin-top: 0.5rem; }
+    dl.profile-fields dd { margin: 0 0 0.5rem 0; }
+    sl-dialog form label { display: block; margin-bottom: 0.5rem; }
+    sl-dialog small.hint { color: var(--pico-muted-color); display: block; margin-top: -0.25rem; }
+  </style>
+</head>
+<body x-cloak x-data="mePage" x-init="init()">
+  <nav class="app-nav">
+    <h1 x-text="t.me.title"></h1>
+    <div class="nav-actions">
+      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    </div>
+  </nav>
+  <main class="container">
+    <a href="/customers" x-text="t.me.back"></a>
+
+    <article class="error" role="alert" x-show="errorMessage" x-cloak x-text="errorMessage"></article>
+    <article role="status" x-show="successMessage" x-cloak x-text="successMessage"></article>
+
+    <template x-if="profile">
+      <div>
+        <h2 x-text="profile.first_name + ' ' + profile.last_name"></h2>
+        <dl class="profile-fields">
+          <dt x-text="t.me.fields.role"></dt>
+          <dd x-text="profile.role"></dd>
+          <dt x-text="t.me.fields.email"></dt>
+          <dd x-text="email"></dd>
+          <dt x-text="t.me.fields.lastLogin"></dt>
+          <dd x-text="formatLastLogin(profile.last_login_at)"></dd>
+          <template x-if="profile.notes">
+            <dt x-text="t.me.fields.notes"></dt>
+          </template>
+          <template x-if="profile.notes">
+            <dd x-text="profile.notes"></dd>
+          </template>
+        </dl>
+        <button class="primary" @click="openChangePasswordDialog()" x-text="t.me.changePasswordButton"></button>
+      </div>
+    </template>
+
+    <sl-dialog x-ref="changePasswordDialog" :label="t.me.changePasswordTitle">
+      <form @submit.prevent="submitChangePassword()">
+        <label>
+          <span x-text="t.me.oldPassword"></span>
+          <input type="password" x-model="changePasswordForm.old_password" required minlength="8" maxlength="200" :disabled="submitting">
+        </label>
+        <label>
+          <span x-text="t.me.newPassword"></span>
+          <input type="password" x-model="changePasswordForm.new_password" required minlength="8" maxlength="200" :disabled="submitting">
+          <small class="hint" x-text="t.me.passwordHint"></small>
+        </label>
+        <label>
+          <span x-text="t.me.confirmPassword"></span>
+          <input type="password" x-model="changePasswordForm.confirm" required minlength="8" maxlength="200" :disabled="submitting"
+                 :aria-invalid="changePasswordMismatch()">
+          <small x-show="changePasswordMismatch()" x-cloak x-text="t.me.passwordMismatch"></small>
+        </label>
+      </form>
+      <sl-button slot="footer" variant="default" @click="closeChangePasswordDialog()" :disabled="submitting"
+                 x-text="t.me.changePasswordCancel"></sl-button>
+      <sl-button slot="footer" variant="primary" @click="submitChangePassword()" :loading="submitting"
+                 :disabled="changePasswordMismatch() || !changePasswordForm.old_password || !changePasswordForm.new_password"
+                 x-text="submitting ? t.me.changePasswordSubmitting : t.me.changePasswordSubmit"></sl-button>
+    </sl-dialog>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('mePage', function () {
+        return {
+          t: window.Strings,
+          callerId: '',
+          email: '',
+          profile: null,
+          loading: true,
+          submitting: false,
+          successMessage: null,
+          errorMessage: null,
+          changePasswordForm: { old_password: '', new_password: '', confirm: '' },
+          async init() {
+            var session = await window.Auth.requireAuth();
+            if (!session) return;
+            this.callerId = session.user.id;
+            this.email = session.user.email || '';
+            await this.loadProfile();
+            document.body.removeAttribute('x-cloak');
+            this.loading = false;
+          },
+          async loadProfile() {
+            var resp = await window.Auth.client.from('profiles')
+              .select('first_name, last_name, role, notes, last_login_at')
+              .eq('id', this.callerId)
+              .maybeSingle();
+            if (resp.error || !resp.data) {
+              console.error('[me] loadProfile', resp.error);
+              this.errorMessage = this.t.me.loadError;
+              return;
+            }
+            this.profile = resp.data;
+          },
+          formatLastLogin(iso) {
+            if (!iso) return this.t.me.fields.neverLogged;
+            try {
+              var d = new Date(iso);
+              var dd = String(d.getDate()).padStart(2, '0');
+              var mm = String(d.getMonth() + 1).padStart(2, '0');
+              var hh = String(d.getHours()).padStart(2, '0');
+              var mi = String(d.getMinutes()).padStart(2, '0');
+              return dd + '/' + mm + ' ' + hh + ':' + mi;
+            } catch (e) { return iso; }
+          },
+          changePasswordMismatch() {
+            if (!this.changePasswordForm.new_password || !this.changePasswordForm.confirm) return false;
+            return this.changePasswordForm.new_password !== this.changePasswordForm.confirm;
+          },
+          openChangePasswordDialog() {
+            this.changePasswordForm = { old_password: '', new_password: '', confirm: '' };
+            this.errorMessage = null;
+            this.successMessage = null;
+            this.$refs.changePasswordDialog.show();
+          },
+          closeChangePasswordDialog() { this.$refs.changePasswordDialog.hide(); },
+          async submitChangePassword() {
+            if (this.submitting) return;
+            if (this.changePasswordMismatch()) return;
+            this.submitting = true;
+            this.errorMessage = null;
+            var body = {
+              old_password: this.changePasswordForm.old_password,
+              new_password: this.changePasswordForm.new_password
+            };
+            var resp;
+            try {
+              resp = await window.Auth.callEdgeFunction('change-own-password', body);
+            } catch (e) {
+              this.submitting = false;
+              this.errorMessage = this.t.me.changePasswordError;
+              return;
+            }
+            this.submitting = false;
+            if (resp.status !== 200) {
+              if (resp.body && resp.body.error === 'invalid_old_password') {
+                this.errorMessage = this.t.me.changePasswordInvalidOld;
+              } else if (resp.body && resp.body.error === 'weak_password') {
+                this.errorMessage = this.t.me.changePasswordWeak;
+              } else {
+                console.error('[me] change-own-password failed', resp);
+                this.errorMessage = this.t.me.changePasswordError;
+              }
+              return;
+            }
+            this.$refs.changePasswordDialog.hide();
+            this.successMessage = this.t.me.changePasswordSuccess;
+            this.changePasswordForm = { old_password: '', new_password: '', confirm: '' };
+          },
+          async logout() { await window.Auth.signOut(); }
+        };
+      });
+    });
+  </script>
+</body>
+</html>
