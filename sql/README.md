@@ -183,3 +183,34 @@ Poi ri-esegui Step 1 e Step 2.
 ### Wipe totale (incluso Auth)
 
 Da dashboard del progetto: `Settings -> General -> Reset database`. Cancella tutto: tabelle, dati, utenti Auth. Dopo, ricomincia dallo Step 1.
+
+## Setup multi-ambiente (M8 Sub-D, 2026-05-10)
+
+Da M8 il progetto vive in due ambienti distinti, ognuno col proprio Supabase project.
+
+| Ambiente | Worker URL | Supabase project ref | Branch git |
+|---|---|---|---|
+| PRD | https://anotherbeachproject.sovereto.workers.dev | `xccpopnwqrxjjhrtyiwd` | `main` |
+| DEV | https://anotherbeachproject-dev.sovereto.workers.dev | `esxnberopfmfaebmbqwd` | `develop` |
+
+### Provisioning di un nuovo ambiente da zero
+
+1. Dashboard Supabase: New project. Region uguale a PRD (eu-west-1).
+2. SQL editor del nuovo project: applicare `schema.sql` poi `rls.sql` (in ordine, idempotenti). Vedi Step 1 e Step 2.
+3. Auth -> Users -> Add user: creare `auth.users` per gli admin/super_admin desiderati (Auto Confirm User ON).
+4. SQL editor: INSERT in `profiles` con UUID degli `auth.users` appena creati e `role` opportuno.
+5. Verify: `select * from profiles;` mostra le righe attese; dashboard Advisors -> Security: 0 finding HIGH/CRITICAL.
+6. Configurare il Worker Cloudflare puntando alle env vars `SUPABASE_URL` + `SUPABASE_ANON_KEY` del nuovo project (Settings -> Build -> Variables and Secrets sul Worker).
+
+### Convenzione di sync DDL DEV<->PRD
+
+Ogni cambio a `schema.sql` o `rls.sql` viene applicato a ENTRAMBI gli ambienti nello stesso turno via:
+- `mcp__supabase__apply_migration` per il project bound dal MCP (oggi PRD), oppure
+- Management API curl con PAT account-wide su `https://api.supabase.com/v1/projects/<ref>/database/query` (header User-Agent custom per evitare WAF Cloudflare 1010), oppure
+- SQL editor della dashboard del project di destinazione (manuale).
+
+DEV per primo, poi PRD se il primo apply e' verde. Niente drift accettabile fra i due ambienti per piu' di una sessione di lavoro.
+
+### Branch protection
+
+Free tier GitHub non permette branch protection rules su repo private. Convenzione: niente push diretto su `main`, solo PR da `develop`. Enforcement = autodisciplina del solo dev. Se in futuro il repo diventa public o si paga GitHub Pro, riabilitare branch protection via `gh api repos/.../branches/main/protection`.
