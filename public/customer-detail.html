@@ -88,7 +88,10 @@
 <body x-cloak x-data="customerDetailPage" x-init="init()">
   <nav class="app-nav">
     <h1 x-text="t.customerDetail.title"></h1>
-    <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    <div class="nav-actions">
+      <a href="/me" x-text="t.nav.profile"></a>
+      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+    </div>
   </nav>
   <main class="container">
     <a href="/customers" x-text="t.customerDetail.backToList"></a>

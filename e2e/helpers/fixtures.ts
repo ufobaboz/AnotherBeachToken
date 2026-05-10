@@ -144,3 +144,57 @@ export async function chargeAmount(
   // Attesa che l'overlay si chiuda.
   await expect(overlay).toBeHidden();
 }
+
+export interface TestAdmin {
+  id: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+}
+
+export async function createTestAdmin(page: Page): Promise<TestAdmin> {
+  // page deve essere autenticata come super_admin (admin non puo' creare admin).
+  const ts = Date.now();
+  const rand = randomSuffix();
+  const email = `e2e-adm-${ts}-${rand}@example.com`;
+  const password = 'E2eTest' + ts + rand;
+  const firstName = 'E2E';
+  const lastName = `ZZ-E2E-ADM-${rand}`;
+  const resp = await page.evaluate(async (body) => {
+    return await window.Auth.callEdgeFunction('create-operator', body);
+  }, { email, password, first_name: firstName, last_name: lastName, role: 'admin' });
+  if (resp.status !== 200) {
+    throw new Error('createTestAdmin failed: ' + JSON.stringify(resp));
+  }
+  const respBody = resp.body as Record<string, unknown>;
+  if (typeof respBody.profile_id !== 'string') {
+    throw new Error('createTestAdmin: missing profile_id in response: ' + JSON.stringify(resp));
+  }
+  return { id: respBody.profile_id, email, password, firstName, lastName };
+}
+
+/**
+ * Helper generico per soft-delete di un profilo (operator o admin).
+ * Equivalente a softDeleteTestOperator ma con nome che riflette lo scope esteso M7.
+ */
+export async function softDeleteTestProfile(page: Page, id: string): Promise<void> {
+  try {
+    await page.evaluate(async (target_id) => {
+      return await window.Auth.callEdgeFunction('soft-delete-profile', { target_id });
+    }, id);
+  } catch (e) {
+    console.warn('[softDeleteTestProfile] cleanup failed for id=' + id + ':', e);
+  }
+}
+
+export async function changeRoleViaEdge(
+  page: Page, target_id: string, new_role: 'operator' | 'admin'
+): Promise<void> {
+  const resp = await page.evaluate(async (body) => {
+    return await window.Auth.callEdgeFunction('change-role', body);
+  }, { target_id, new_role });
+  if (resp.status !== 200) {
+    throw new Error('changeRoleViaEdge failed: ' + JSON.stringify(resp));
+  }
+}

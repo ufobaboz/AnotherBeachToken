@@ -12,3 +12,11 @@ nav.app-nav h1 {
   margin: 0;
   font-size: 1.1rem;
 }
+nav.app-nav .nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+nav.app-nav .nav-actions a {
+  font-size: 0.95rem;
+}
