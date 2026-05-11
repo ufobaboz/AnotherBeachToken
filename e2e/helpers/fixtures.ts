@@ -41,11 +41,11 @@ export async function softDeleteTestCustomer(page: Page, id: string): Promise<vo
   // Idempotente: se la pagina e' gia' aperta sul detail con dialog gia' chiuso,
   // si fa goto comunque per riusare la stessa logica.
   await page.goto(`/customers/${id}`);
-  // Bottone "Cancella cliente" visibile solo a admin+; il super_admin di test lo vede.
-  const deleteBtn = page.locator('button.btn--danger', { hasText: 'Cancella cliente' });
+  // Bottone "Archivia cliente" visibile solo a admin+; il super_admin di test lo vede.
+  const deleteBtn = page.locator('button.btn--danger', { hasText: 'Archivia cliente' });
   await deleteBtn.click();
   // Shoelace dialog: bottone variant=danger nel footer.
-  const confirmBtn = page.locator('sl-dialog sl-button[variant=danger]', { hasText: 'Cancella' });
+  const confirmBtn = page.locator('sl-dialog sl-button[variant=danger]', { hasText: 'Archivia' });
   await Promise.all([
     page.waitForURL('**/customers', { timeout: 10_000 }),
     confirmBtn.click(),

@@ -58,18 +58,17 @@ window.Strings = {
     downloadQr: 'Scarica QR',
     sendQrWhatsApp: 'Invia QR su WhatsApp',
     qrWhatsAppText: function (firstName, publicUrl) {
-      return 'Ciao ' + firstName + ', ecco il tuo QR per il bar: ' + publicUrl;
+      return 'Ciao ' + firstName + ', ecco il tuo QR personale. Mostralo alla cassa quando consumi: ' + publicUrl;
     },
     ctaCheckout: 'Chiudi conto',
-    deleteButton: 'Cancella cliente',
-    deleteDialogTitle: 'Conferma cancellazione',
+    deleteButton: 'Archivia cliente',
+    deleteDialogTitle: 'Conferma archiviazione',
     deleteDialogBody: function (firstName, lastName) {
-      return 'Cancellare cliente ' + firstName + ' ' + lastName + '?'
-           + ' L\'azione e\' reversibile solo via SQL editor da super_admin.';
+      return 'Archiviare ' + firstName + ' ' + lastName + '?';
     },
-    deleteDialogConfirm: 'Cancella',
+    deleteDialogConfirm: 'Archivia',
     deleteDialogCancel: 'Annulla',
-    deleteError: 'Errore in fase di cancellazione. Riprova.',
+    deleteError: 'Errore in fase di archiviazione. Riprova.',
     transactions: {
       empty: 'Nessun movimento registrato.',
       descCharge: function (amount) { return 'Addebito ' + amount + ' EUR'; },
@@ -85,10 +84,10 @@ window.Strings = {
       }
     },
     balance: {
-      label: 'Saldo aperto',
-      sendWhatsApp: 'Invia saldo su WhatsApp',
+      label: 'Conto aperto',
+      sendWhatsApp: 'Invia conto su WhatsApp',
       whatsAppText: function (firstName, balanceFormatted, publicUrl) {
-        return 'Ciao ' + firstName + ', il tuo saldo aperto e\' ' + balanceFormatted + ' EUR. Visualizzalo qui: ' + publicUrl;
+        return 'Ciao ' + firstName + ', il tuo conto aperto e\' ' + balanceFormatted + ' EUR. Visualizzalo qui: ' + publicUrl;
       }
     },
     charge: {
@@ -114,7 +113,7 @@ window.Strings = {
     greeting: function (firstName) { return 'Ciao ' + firstName; },
     notFound: 'QR non trovato.',
     qrAlt: 'Il tuo QR code',
-    openBalanceLabel: 'Saldo aperto',
+    openBalanceLabel: 'Conto aperto',
     currency: 'EUR'
   },
   paymentMethods: {
@@ -127,11 +126,11 @@ window.Strings = {
     title: 'Chiusura conto',
     backToList: 'Torna alla lista',
     notFound: 'Cliente non trovato.',
-    sectionMovements: 'Movimenti da saldare',
-    emptyMovements: 'Nessun movimento da saldare.',
-    balanceLabel: 'Saldo aperto',
+    sectionMovements: 'Movimenti da pagare',
+    emptyMovements: 'Nessun movimento da pagare.',
+    balanceLabel: 'Conto aperto',
     methodLabel: 'Metodo di pagamento',
-    emptyBalanceCta: 'Nessun importo da saldare',
+    emptyBalanceCta: 'Nessun importo da pagare',
     confirmCta: function (amount, methodLabel) {
       return 'Conferma chiusura - ' + amount + ' EUR via ' + methodLabel;
     },
@@ -299,6 +298,6 @@ window.Strings = {
     statusFail: 'FAIL',
     statusNa: 'n/a',
     refreshHint: 'Ricarica la pagina per ri-eseguire i check.',
-    openBalanceLabel: 'Saldo aperto totale'
+    openBalanceLabel: 'Conto aperto totale'
   }
 };

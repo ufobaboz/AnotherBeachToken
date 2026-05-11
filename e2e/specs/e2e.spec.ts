@@ -189,12 +189,12 @@ test.describe('Anagrafica clienti', () => {
     }
   });
 
-  test('customer-detail super_admin: CTA Cancella visibile', async ({ page }) => {
+  test('customer-detail super_admin: CTA Archivia visibile', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
       await page.goto(`/customers/${customer.id}`);
-      const deleteBtn = page.locator('button.btn--danger', { hasText: 'Cancella cliente' });
+      const deleteBtn = page.locator('button.btn--danger', { hasText: 'Archivia cliente' });
       await expect(deleteBtn).toBeVisible({ timeout: 8_000 });
     } finally {
       await softDeleteTestCustomer(page, customer.id);
@@ -224,7 +224,7 @@ test.describe('QR pubblico', () => {
     await expect(notFound).toBeVisible({ timeout: 8_000 });
   });
 
-  test('/qr/<token reale>: saluto IT + saldo 0,00 EUR (no charges)', async ({ page, browser }) => {
+  test('/qr/<token reale>: saluto IT + conto 0,00 EUR (no charges)', async ({ page, browser }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
@@ -244,7 +244,7 @@ test.describe('QR pubblico', () => {
     }
   });
 
-  test('/qr/<token>: saldo riflette charges aperte', async ({ page, browser }) => {
+  test('/qr/<token>: conto riflette charges aperte', async ({ page, browser }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
@@ -270,7 +270,7 @@ test.describe('QR pubblico', () => {
 // ----------------------------------------------------------------------
 test.describe('Operazioni POS', () => {
 
-  test('charge 5,50 -> saldo 5,50 EUR + badge aperto', async ({ page }) => {
+  test('charge 5,50 -> conto 5,50 EUR + badge aperto', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
@@ -282,7 +282,7 @@ test.describe('Operazioni POS', () => {
     }
   });
 
-  test('reversal: dialog Shoelace -> conferma -> saldo 0 + badge stornato', async ({ page }) => {
+  test('reversal: dialog Shoelace -> conferma -> conto 0 + badge stornato', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
@@ -302,7 +302,7 @@ test.describe('Operazioni POS', () => {
     }
   });
 
-  test('WhatsApp link saldo: href ben formato wa.me con saldo IT', async ({ page }) => {
+  test('WhatsApp link conto: href ben formato wa.me con conto IT', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
@@ -381,7 +381,7 @@ test.describe('Chiusura conto', () => {
     }
   });
 
-  test('saldo=0 -> dropdown nascosto, CTA disabilitato', async ({ page }) => {
+  test('conto=0 -> dropdown nascosto, CTA disabilitato', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
