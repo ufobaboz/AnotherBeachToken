@@ -41,11 +41,11 @@ export async function softDeleteTestCustomer(page: Page, id: string): Promise<vo
   // Idempotente: se la pagina e' gia' aperta sul detail con dialog gia' chiuso,
   // si fa goto comunque per riusare la stessa logica.
   await page.goto(`/customers/${id}`);
-  // Bottone "Cancella cliente" visibile solo a admin+; il super_admin di test lo vede.
-  const deleteBtn = page.locator('button.contrast', { hasText: 'Cancella cliente' });
+  // Bottone "Archivia cliente" visibile solo a admin+; il super_admin di test lo vede.
+  const deleteBtn = page.locator('button.btn--danger', { hasText: 'Archivia cliente' });
   await deleteBtn.click();
   // Shoelace dialog: bottone variant=danger nel footer.
-  const confirmBtn = page.locator('sl-dialog sl-button[variant=danger]', { hasText: 'Cancella' });
+  const confirmBtn = page.locator('sl-dialog sl-button[variant=danger]', { hasText: 'Archivia' });
   await Promise.all([
     page.waitForURL('**/customers', { timeout: 10_000 }),
     confirmBtn.click(),
@@ -117,6 +117,10 @@ export async function softDeleteTestOperator(page: Page, id: string): Promise<vo
  * un addebito. amountInteger e amountDecimal sono stringhe di cifre senza
  * separatori (es. amountInteger="5", amountDecimal="50" per 5,50 EUR).
  */
+// chargeAmount: smoke del POS UI (keypad + submit). Usalo solo nel test
+// dedicato al keypad. Per i test che hanno solo bisogno di un addebito
+// pre-esistente sul customer (es. WhatsApp link, checkout, fine stagione),
+// usa insertChargeViaApi: piu' veloce, no race con Alpine hydration.
 export async function chargeAmount(
   page: Page,
   customerId: string,
@@ -124,25 +128,56 @@ export async function chargeAmount(
   amountDecimal: string
 ): Promise<void> {
   await page.goto(`/customers/${customerId}?charge=1`);
-  // Attesa che l'overlay POS sia visibile.
+  await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+  // balance-card visible = init completo (customer + refreshTransactions await).
+  await expect(page.locator('.balance-card')).toContainText('EUR', { timeout: 15_000 });
   const overlay = page.locator('.pos-overlay');
   await expect(overlay).toBeVisible();
-  for (const digit of amountInteger) {
-    await page.locator(`.pos-keypad button`, { hasText: new RegExp(`^${digit}$`) }).click();
-  }
-  await page.locator(`.pos-keypad button`, { hasText: new RegExp(`^,$`) }).click();
-  for (const digit of amountDecimal) {
-    await page.locator(`.pos-keypad button`, { hasText: new RegExp(`^${digit}$`) }).click();
-  }
-  // CTA "ADDEBITA" e' un button.primary.pos-cta dentro pos-actions.
+  // Keypad order fisso: 7 8 9 / 4 5 6 / 1 2 3 / 0 , <-
+  const KEY_INDEX: Record<string, number> = {
+    '7': 0, '8': 1, '9': 2,
+    '4': 3, '5': 4, '6': 5,
+    '1': 6, '2': 7, '3': 8,
+    '0': 9, ',': 10
+  };
+  const press = async (k: string) =>
+    page.locator('.pos-keypad button').nth(KEY_INDEX[k]).click();
+  for (const d of amountInteger) await press(d);
+  await press(',');
+  for (const d of amountDecimal) await press(d);
   await Promise.all([
-    page.waitForResponse((resp) =>
-      resp.url().includes('/rest/v1/transactions') && resp.request().method() === 'POST'
+    page.waitForResponse((r) =>
+      r.url().includes('/rest/v1/transactions') && r.request().method() === 'POST'
     ),
-    page.locator('button.pos-cta.primary, .pos-actions button.primary').first().click(),
+    page.locator('button.pos-cta.btn--primary, .pos-actions button.btn--primary').first().click(),
   ]);
-  // Attesa che l'overlay si chiuda.
   await expect(overlay).toBeHidden();
+}
+
+// insertChargeViaApi: inserisce direttamente una charge via supabase-js dal
+// browser context. Salta l'UI POS quindi e' zero-race. La pagina deve essere
+// loggata come operator+ (super_admin va bene): RLS customers_insert + i CHECK
+// applicabili coprono comunque le invarianti.
+export async function insertChargeViaApi(
+  page: Page,
+  customerId: string,
+  amount: number
+): Promise<void> {
+  const result = await page.evaluate(async ({ cid, amt }) => {
+    const session = await (window as any).Auth.client.auth.getSession();
+    const userId = session.data.session?.user.id;
+    if (!userId) throw new Error('insertChargeViaApi: no session user.id');
+    const resp = await (window as any).Auth.client.from('transactions').insert({
+      customer_id: cid,
+      user_id: userId,
+      type: 'charge',
+      amount: amt
+    }).select('id').single();
+    return { error: resp.error, id: resp.data?.id };
+  }, { cid: customerId, amt: amount });
+  if (result.error) {
+    throw new Error('insertChargeViaApi: ' + JSON.stringify(result.error));
+  }
 }
 
 export interface TestAdmin {

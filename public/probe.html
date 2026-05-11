@@ -1,38 +1,37 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Probe -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
   <script src="/assets/config.js"></script>
   <script src="/assets/strings.js"></script>
   <script src="/assets/auth.js"></script>
+  <script src="/assets/nav.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
     .check { margin-bottom: 0.75rem; }
-    .badge { display: inline-block; min-width: 3rem; text-align: center; padding: 0.1rem 0.5rem; border-radius: 0.2rem; font-family: monospace; font-size: 0.85rem; margin-right: 0.5rem; }
-    .badge-ok   { background: #1c5d31; color: #fff; }
-    .badge-fail { background: #8a1f1f; color: #fff; }
-    .badge-na   { background: #555;    color: #fff; }
-    .badge-pending { background: #777;    color: #fff; }
-    pre { background: var(--pico-card-background-color); padding: 0.5rem; overflow-x: auto; font-size: 0.8rem; }
+    .badge { display: inline-block; min-width: 3rem; text-align: center; padding: 0.1rem 0.5rem; border-radius: var(--sl-border-radius-small); font-family: monospace; font-size: 0.85rem; margin-right: 0.5rem; }
+    .badge-ok      { background: var(--sl-color-success-600); color: var(--sl-color-neutral-0); }
+    .badge-fail    { background: var(--sl-color-danger-600); color: var(--sl-color-neutral-0); }
+    .badge-na      { background: var(--sl-color-neutral-600); color: var(--sl-color-neutral-0); }
+    .badge-pending { background: var(--sl-color-neutral-400); color: var(--sl-color-neutral-0); }
+    pre { background: var(--sl-color-neutral-50); padding: 0.5rem; overflow-x: auto; font-size: 0.8rem; border-radius: var(--sl-border-radius-medium); }
   </style>
 </head>
 <body x-cloak x-data="probePage" x-init="init()">
-  <nav class="app-nav">
+  <nav class="app-nav" x-data="appNav" x-init="init()">
     <h1 x-text="t.probe.title"></h1>
     <div class="nav-actions">
-      <a href="/admin/users" x-text="t.nav.users"></a>
-      <a href="/admin/season" x-text="t.nav.season"></a>
-      <a href="/me" x-text="t.nav.profile"></a>
-      <a target="_blank" rel="noopener noreferrer"
-         href="https://dash.cloudflare.com/9aea46551a6124e9e4d0233168e81f47/r2/default/buckets/anotherbeach-backups"
-         x-text="t.nav.backupR2"></a>
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <template x-for="item in items" :key="item.path">
+        <a class="btn btn--ghost" :class="item.isCurrent ? 'btn--current' : ''"
+           :href="item.path" x-text="item.label"></a>
+      </template>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
 

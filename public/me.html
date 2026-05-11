@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Profilo -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
   <script src="/assets/config.js"></script>
   <script src="/assets/strings.js"></script>
   <script src="/assets/auth.js"></script>
+  <script src="/assets/nav.js"></script>
   <script type="module" src="/vendor/shoelace/2.20.1/components/dialog/dialog.js"></script>
   <script type="module" src="/vendor/shoelace/2.20.1/components/button/button.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
@@ -18,20 +18,24 @@
     [x-cloak] { display: none !important; }
     article[role="status"] {
       padding: 0.6rem 0.9rem; margin-bottom: 1rem;
-      background: #1c5d31; color: #fff; border-radius: 0.3rem;
+      background: var(--sl-color-success-600); color: var(--sl-color-neutral-0); border-radius: var(--sl-border-radius-medium);
     }
-    article.error { background: #8a1f1f; color: #fff; }
+    article.error { background: var(--sl-color-danger-600); color: var(--sl-color-neutral-0); }
     dl.profile-fields dt { font-weight: bold; margin-top: 0.5rem; }
     dl.profile-fields dd { margin: 0 0 0.5rem 0; }
     sl-dialog form label { display: block; margin-bottom: 0.5rem; }
-    sl-dialog small.hint { color: var(--pico-muted-color); display: block; margin-top: -0.25rem; }
+    sl-dialog small.hint { color: var(--sl-color-neutral-500); display: block; margin-top: -0.25rem; }
   </style>
 </head>
 <body x-cloak x-data="mePage" x-init="init()">
-  <nav class="app-nav">
+  <nav class="app-nav" x-data="appNav" x-init="init()">
     <h1 x-text="t.me.title"></h1>
     <div class="nav-actions">
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <template x-for="item in items" :key="item.path">
+        <a class="btn btn--ghost" :class="item.isCurrent ? 'btn--current' : ''"
+           :href="item.path" x-text="item.label"></a>
+      </template>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
   <main class="container">
@@ -57,7 +61,7 @@
             <dd x-text="profile.notes"></dd>
           </template>
         </dl>
-        <button class="primary" @click="openChangePasswordDialog()" x-text="t.me.changePasswordButton"></button>
+        <button class="btn btn--primary" @click="openChangePasswordDialog()" x-text="t.me.changePasswordButton"></button>
       </div>
     </template>
 
