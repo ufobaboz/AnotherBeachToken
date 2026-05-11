@@ -101,7 +101,7 @@ test.describe('Auth & sessione', () => {
     await loginAsSuperAdmin(page);
     await Promise.all([
       page.waitForURL(/\/login$/, { timeout: 10_000 }),
-      page.locator('nav.app-nav button.secondary').click(),
+      page.locator('nav.app-nav button.btn--outline').click(),
     ]);
     await expect(page).toHaveURL(/\/login$/);
   });
@@ -194,7 +194,7 @@ test.describe('Anagrafica clienti', () => {
     const customer = await createTestCustomer(page);
     try {
       await page.goto(`/customers/${customer.id}`);
-      const deleteBtn = page.locator('button.contrast', { hasText: 'Cancella cliente' });
+      const deleteBtn = page.locator('button.btn--danger', { hasText: 'Cancella cliente' });
       await expect(deleteBtn).toBeVisible({ timeout: 8_000 });
     } finally {
       await softDeleteTestCustomer(page, customer.id);
@@ -311,7 +311,7 @@ test.describe('Operazioni POS', () => {
       // + del link WhatsApp e' async post-chiusura. Aspetto l'aggiornamento
       // esplicito del balance-card prima di leggere href.
       await expect(page.locator('.balance-card')).toContainText('3,20 EUR');
-      const link = page.locator('a[href^="https://wa.me/"][role=button]').last();
+      const link = page.locator('a[href^="https://wa.me/"]').last();
       await expect(link).toBeVisible();
       const href = await link.getAttribute('href');
       expect(href).toMatch(/^https:\/\/wa\.me\/\d{11,}\?text=.+/);
@@ -337,7 +337,7 @@ test.describe('Scan QR', () => {
     const alert = page.locator('article[role=alert] p').first();
     await expect(alert).toBeVisible({ timeout: 15_000 });
     await expect(alert).toContainText(/camera|qr/i);
-    await expect(page.locator('a[href="/customers"][role=button]')).toBeVisible();
+    await expect(page.locator('a.btn--outline[href="/customers"]')).toBeVisible();
   });
 
 });
@@ -618,7 +618,7 @@ test.describe('Gestione utenti', () => {
       await page.goto('/admin/users');
       const row = page.locator('table tbody tr', { hasText: op.lastName });
       await expect(row).toBeVisible({ timeout: 8_000 });
-      await row.locator('button.contrast', { hasText: 'Cancella' }).click();
+      await row.locator('button.btn--danger', { hasText: 'Cancella' }).click();
       const dialog = page.locator('sl-dialog[label="Conferma cancellazione"]');
       await expect(dialog).toBeVisible();
       await dialog.locator('sl-button[variant="danger"]').click();
@@ -655,7 +655,7 @@ test.describe('Gestione utenti', () => {
     const email = `e2e-op-dlg-${ts}@example.com`;
     let createdId: string | null = null;
     try {
-      await page.locator('button.primary', { hasText: '+ Nuovo operator' }).click();
+      await page.locator('button.btn--primary', { hasText: '+ Nuovo operator' }).click();
       const dialog = page.locator('sl-dialog[label="Nuovo operator"]');
       await expect(dialog).toBeVisible({ timeout: 5_000 });
       await dialog.locator('input[type="email"]').fill(email);
@@ -684,7 +684,7 @@ test.describe('Gestione utenti', () => {
     const email = `e2e-adm-dlg-${ts}@example.com`;
     let createdId: string | null = null;
     try {
-      await page.locator('button.primary', { hasText: '+ Nuovo admin' }).click();
+      await page.locator('button.btn--primary', { hasText: '+ Nuovo admin' }).click();
       const dialog = page.locator('sl-dialog[label="Nuovo admin"]');
       await expect(dialog).toBeVisible({ timeout: 5_000 });
       await dialog.locator('input[type="email"]').fill(email);
@@ -719,7 +719,7 @@ test.describe('Gestione utenti', () => {
       await page.goto('/admin/users');
       await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
       // bottone "+ Nuovo admin" presente in DOM ma nascosto via x-show (super_admin only)
-      await expect(page.locator('button.primary', { hasText: '+ Nuovo admin' })).toBeHidden();
+      await expect(page.locator('button.btn--primary', { hasText: '+ Nuovo admin' })).toBeHidden();
       // checkbox 'Mostra cancellati' presente in DOM ma nascosto via x-show (super_admin only)
       await expect(page.locator('label', { hasText: 'Mostra cancellati' })).toBeHidden();
       // 'Cambia ruolo' non presente in nessuna riga (operator-only list, no row eligible)
@@ -916,7 +916,7 @@ test.describe('Profilo proprio', () => {
     await expect(dl).toContainText('super_admin');
     await expect(dl).toContainText(process.env.TEST_SUPER_ADMIN_EMAIL!);
     // bottone Cambia password
-    await expect(page.locator('button.primary', { hasText: 'Cambia password' })).toBeVisible();
+    await expect(page.locator('button.btn--primary', { hasText: 'Cambia password' })).toBeVisible();
     // nessun input editabile (no input text required visibili)
     await expect(page.locator('main input[type=text][required]')).toHaveCount(0);
   });
@@ -925,7 +925,7 @@ test.describe('Profilo proprio', () => {
     await loginAsSuperAdmin(page);
     await page.goto('/me');
     await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
-    await page.locator('button.primary', { hasText: 'Cambia password' }).click();
+    await page.locator('button.btn--primary', { hasText: 'Cambia password' }).click();
     const dialog = page.locator('sl-dialog[label="Cambia password"]');
     await expect(dialog).toBeVisible();
     const inputs = dialog.locator('input[type=password]');
@@ -963,7 +963,7 @@ test.describe('Profilo proprio', () => {
       await page.goto('/me');
       await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
       // dialog cambio password
-      await page.locator('button.primary', { hasText: 'Cambia password' }).click();
+      await page.locator('button.btn--primary', { hasText: 'Cambia password' }).click();
       const dialog = page.locator('sl-dialog[label="Cambia password"]');
       await expect(dialog).toBeVisible();
       const newPwd = 'NewOpPwd' + Date.now();

@@ -107,7 +107,7 @@
             var resp = await window.Auth.client.from('customers').insert(payload).select('id').single();
             if (resp.error) {
               console.error('[customer-new] insert error', resp.error);
-              this.error = '[DEBUG] ' + JSON.stringify({code: resp.error.code, message: resp.error.message, details: resp.error.details, hint: resp.error.hint});
+              this.error = this.t.customerNew.error;
               this.submitting = false;
               return;
             }
