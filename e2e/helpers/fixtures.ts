@@ -42,7 +42,7 @@ export async function softDeleteTestCustomer(page: Page, id: string): Promise<vo
   // si fa goto comunque per riusare la stessa logica.
   await page.goto(`/customers/${id}`);
   // Bottone "Cancella cliente" visibile solo a admin+; il super_admin di test lo vede.
-  const deleteBtn = page.locator('button.contrast', { hasText: 'Cancella cliente' });
+  const deleteBtn = page.locator('button.btn--danger', { hasText: 'Cancella cliente' });
   await deleteBtn.click();
   // Shoelace dialog: bottone variant=danger nel footer.
   const confirmBtn = page.locator('sl-dialog sl-button[variant=danger]', { hasText: 'Cancella' });
@@ -134,12 +134,12 @@ export async function chargeAmount(
   for (const digit of amountDecimal) {
     await page.locator(`.pos-keypad button`, { hasText: new RegExp(`^${digit}$`) }).click();
   }
-  // CTA "ADDEBITA" e' un button.primary.pos-cta dentro pos-actions.
+  // CTA "ADDEBITA" e' un button.pos-cta.btn--primary dentro pos-actions.
   await Promise.all([
     page.waitForResponse((resp) =>
       resp.url().includes('/rest/v1/transactions') && resp.request().method() === 'POST'
     ),
-    page.locator('button.pos-cta.primary, .pos-actions button.primary').first().click(),
+    page.locator('button.pos-cta.btn--primary, .pos-actions button.btn--primary').first().click(),
   ]);
   // Attesa che l'overlay si chiuda.
   await expect(overlay).toBeHidden();
