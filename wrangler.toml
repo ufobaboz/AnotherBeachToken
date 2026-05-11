@@ -6,3 +6,10 @@ main = "src/worker.js"
 [assets]
 directory = "./public"
 binding = "ASSETS"
+
+[env.dev]
+name = "anotherbeachproject-dev"
+
+[env.dev.assets]
+directory = "./public"
+binding = "ASSETS"

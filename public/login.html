@@ -22,7 +22,7 @@
       <p x-text="t.app.title"></p>
     </hgroup>
 
-    <form @submit.prevent="submit()">
+    <form id="login-form" @submit.prevent="submit()">
       <label>
         <span x-text="t.login.emailLabel"></span>
         <input type="email" x-model="email" required autocomplete="username" :disabled="submitting">

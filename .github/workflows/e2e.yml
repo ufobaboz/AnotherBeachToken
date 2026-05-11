@@ -2,11 +2,13 @@ name: E2E
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
     paths:
       - 'public/**'
       - 'src/**'
       - 'e2e/**'
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
       - '.github/workflows/e2e.yml'
   workflow_dispatch:
 
@@ -34,9 +36,25 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Wait for deploys to settle
+        env:
+          APP_URL: https://anotherbeachproject-dev.sovereto.workers.dev
+        run: |
+          sleep 60
+          for i in $(seq 1 12); do
+            if curl -fsSL "$APP_URL/login" | grep -q 'id="login-form"'; then
+              echo "App live"
+              exit 0
+            fi
+            echo "Retry $i: app not yet live"
+            sleep 5
+          done
+          echo "App not responding after timeout"
+          exit 1
+
       - name: Run E2E suite
         env:
-          APP_URL: https://anotherbeachproject.sovereto.workers.dev
+          APP_URL: https://anotherbeachproject-dev.sovereto.workers.dev
           TEST_SUPER_ADMIN_EMAIL: ${{ secrets.TEST_SUPER_ADMIN_EMAIL }}
           TEST_SUPER_ADMIN_PASSWORD: ${{ secrets.TEST_SUPER_ADMIN_PASSWORD }}
           CI: 'true'
