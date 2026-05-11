@@ -304,5 +304,13 @@ window.Strings = {
     statusNa: 'n/a',
     refreshHint: 'Ricarica la pagina per ri-eseguire i check.',
     openBalanceLabel: 'Conto aperto totale'
+  },
+  pwa: {
+    installLabel: 'Installa app',
+    iosTitle: 'Aggiungi a Home',
+    iosStep1: '1. Tocca il pulsante Condividi in basso (quadrato con freccia verso l\'alto).',
+    iosStep2: '2. Scorri il menu e scegli "Aggiungi alla schermata Home".',
+    iosStep3: '3. Conferma con "Aggiungi" in alto a destra.',
+    iosClose: 'Ho capito'
   }
 };

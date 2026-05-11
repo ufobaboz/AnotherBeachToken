@@ -72,6 +72,52 @@ test.describe('Asset self-hosted', () => {
 });
 
 // ----------------------------------------------------------------------
+// PWA installabile (manifest + service worker + icone + pulsante "Installa")
+// ----------------------------------------------------------------------
+test.describe('PWA installabile', () => {
+
+  test('/login include link manifest + meta PWA', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page.locator('link[rel=manifest]')).toHaveAttribute('href', '/manifest.webmanifest');
+    await expect(page.locator('meta[name=theme-color]')).toHaveAttribute('content', /#145d2f/i);
+    await expect(page.locator('link[rel=apple-touch-icon]')).toHaveAttribute('href', '/icons/apple-touch-icon.png');
+  });
+
+  test('manifest.webmanifest valido + icone + sw raggiungibili', async ({ request }) => {
+    const manifest = await request.get('/manifest.webmanifest');
+    expect(manifest.status()).toBe(200);
+    const json = await manifest.json();
+    expect(json.name).toBeTruthy();
+    expect(json.short_name).toBeTruthy();
+    expect(json.start_url).toBe('/login');
+    expect(json.display).toBe('standalone');
+    expect(Array.isArray(json.icons)).toBe(true);
+    const sizes = json.icons.map((i: { sizes: string }) => i.sizes);
+    expect(sizes).toContain('192x192');
+    expect(sizes).toContain('512x512');
+    const hasMaskable = json.icons.some((i: { purpose: string }) => /maskable/.test(i.purpose));
+    expect(hasMaskable).toBe(true);
+    for (const icon of json.icons) {
+      const resp = await request.get(icon.src);
+      expect(resp.status(), icon.src).toBe(200);
+    }
+    const sw = await request.get('/sw.js');
+    expect(sw.status()).toBe(200);
+    const appleTouch = await request.get('/icons/apple-touch-icon.png');
+    expect(appleTouch.status()).toBe(200);
+  });
+
+  test('pulsante "Installa app" iniettato nella nav su pagina operatore', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    // pwa.js gira al DOMContentLoaded e aggiunge un <button data-pwa-install>
+    // in .nav-actions. Resta hidden finche' il browser non supporta install,
+    // ma il nodo deve esistere.
+    await expect(page.locator('nav.app-nav .nav-actions [data-pwa-install]')).toHaveCount(1);
+  });
+
+});
+
+// ----------------------------------------------------------------------
 // Auth & sessione
 // ----------------------------------------------------------------------
 test.describe('Auth & sessione', () => {
@@ -175,6 +221,101 @@ test.describe('Navigazione (menu)', () => {
         });
         await loginAsSuperAdmin(page);
         await softDeleteTestProfile(page, admin.id);
+      } catch (e) {
+        console.warn('[test cleanup] failed:', e);
+      }
+    }
+  });
+
+  test('mobile (<720px): burger visibile, tab inline nascoste; drawer espone le stesse voci', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    const nav = page.locator('nav.app-nav');
+    // I link inline esistono nel DOM ma il container e' display:none, quindi non sono visibili.
+    await expect(nav.locator('.nav-actions')).toBeHidden();
+    // Il burger e' visibile.
+    const burger = nav.locator('sl-icon-button.nav-burger');
+    await expect(burger).toBeVisible();
+    // Click apre il drawer. Lo show() di sl-drawer e' async, attendiamo open=true.
+    await burger.click();
+    const drawer = nav.locator('sl-drawer.nav-drawer');
+    await expect(drawer).toHaveAttribute('open', '', { timeout: 4_000 });
+    // Le stesse voci di super_admin compaiono come sl-menu-item.
+    for (const label of ['Clienti', 'Scan', 'Utenti', 'Stagione', 'Probe', 'Profilo']) {
+      await expect(drawer.locator('sl-menu-item', { hasText: label })).toBeVisible();
+    }
+    // Esci e' in coda.
+    await expect(drawer.locator('sl-menu-item', { hasText: 'Esci' })).toBeVisible();
+  });
+
+  test('mobile (<720px): tap su voce del drawer naviga alla pagina', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    const nav = page.locator('nav.app-nav');
+    await nav.locator('sl-icon-button.nav-burger').click();
+    const drawer = nav.locator('sl-drawer.nav-drawer');
+    await expect(drawer).toHaveAttribute('open', '', { timeout: 4_000 });
+    // Tap su "Profilo" dovrebbe portare a /me
+    await drawer.locator('sl-menu-item', { hasText: 'Profilo' }).click();
+    await page.waitForURL(/\/me$/, { timeout: 8_000 });
+    await expect(page).toHaveURL(/\/me$/);
+  });
+
+  test('desktop (>=720px): burger nascosto, tab inline visibili', async ({ page }) => {
+    // Esplicito anche se default viewport e' 1280x720: rende il contratto chiaro.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    const nav = page.locator('nav.app-nav');
+    await expect(nav.locator('.nav-actions')).toBeVisible();
+    await expect(nav.locator('sl-icon-button.nav-burger')).toBeHidden();
+  });
+
+  test('home post-login: super_admin -> /customers', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await expect(page).toHaveURL(/\/customers$/);
+  });
+
+  test('home post-login: operator -> /scan', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await loginAsOperator(page, op.email, op.password);
+      await expect(page).toHaveURL(/\/scan$/);
+    } finally {
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await loginAsSuperAdmin(page);
+        await softDeleteTestOperator(page, op.id);
+      } catch (e) {
+        console.warn('[test cleanup] failed:', e);
+      }
+    }
+  });
+
+  test('home post-login: admin -> /customers', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const adm = await createTestAdmin(page);
+    try {
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await loginAsAdmin(page, adm.email, adm.password);
+      await expect(page).toHaveURL(/\/customers$/);
+    } finally {
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await loginAsSuperAdmin(page);
+        await softDeleteTestProfile(page, adm.id);
       } catch (e) {
         console.warn('[test cleanup] failed:', e);
       }
@@ -460,7 +601,8 @@ test.describe('Chiusura conto', () => {
       await insertChargeViaApi(page, customer.id, 5.50);
 
       await page.goto(`/checkout/${customer.id}`);
-      await expect(page.locator('h2'))
+      // 'main h2' per evitare match con <h2 part="title"> dello shadow DOM di sl-drawer.
+      await expect(page.locator('main h2'))
         .toHaveText(`${customer.lastName} ${customer.firstName}`);
       await expect(page.locator('.balance-card')).toContainText('5,50 EUR');
 
@@ -604,10 +746,10 @@ test.describe('Gestione utenti', () => {
         await opPage.locator('input[type=password]').fill(op.password);
         await opPage.locator('button[type=submit]').click();
         await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
-        // login con nuova password -> OK redirect /customers
+        // login con nuova password -> OK redirect home operator (/scan)
         await opPage.locator('input[type=password]').fill(newPwd);
         await opPage.locator('button[type=submit]').click();
-        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        await opPage.waitForURL(/\/scan$/, { timeout: 15_000 });
       } finally { await ctx.close(); }
     } finally {
       await softDeleteTestOperator(page, op.id);
@@ -620,7 +762,7 @@ test.describe('Gestione utenti', () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test('operator su /admin/users -> redirect /customers', async ({ page }) => {
+  test('operator su /admin/users -> redirect /scan (home operator)', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const op = await createTestOperator(page);
     try {
@@ -634,10 +776,10 @@ test.describe('Gestione utenti', () => {
       await expect(page.locator('input[type=email]')).toBeVisible({ timeout: 8_000 });
       // login operator
       await loginAsOperator(page, op.email, op.password);
-      // visita /admin/users -> guard redirecta a /customers (operator non ha accesso)
+      // visita /admin/users -> guard redirecta alla home del ruolo (/scan per operator)
       await page.goto('/admin/users');
-      await page.waitForURL(/\/customers$/, { timeout: 15_000 });
-      await expect(page).toHaveURL(/\/customers$/);
+      await page.waitForURL(/\/scan$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/scan$/);
     } finally {
       // logout operator: stessa pulizia, poi login come super_admin
       try {
@@ -710,7 +852,7 @@ test.describe('Gestione utenti', () => {
         await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
         await opPage.locator('input[type=password]').fill(newPwd);
         await opPage.locator('button[type=submit]').click();
-        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        await opPage.waitForURL(/\/scan$/, { timeout: 15_000 });
       } finally { await ctx.close(); }
     } finally {
       await softDeleteTestOperator(page, op.id);
@@ -738,9 +880,9 @@ test.describe('Gestione utenti', () => {
         await opPage.locator('input[type=email]').fill(op.email);
         await opPage.locator('input[type=password]').fill(op.password);
         await opPage.locator('button[type=submit]').click();
-        // signInWithPassword riesce comunque; la pagina atterrara' su /customers.
+        // signInWithPassword riesce comunque; la pagina atterrara' sulla home del ruolo (/scan per operator).
         // Aspetta che il redirect si completi e auth.js abbia la sessione caricata.
-        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        await opPage.waitForURL(/\/scan$/, { timeout: 15_000 });
         const ping = await opPage.evaluate(async () => {
           return await window.Auth.callAuthPing({ stamp: false });
         });
@@ -1091,7 +1233,7 @@ test.describe('Profilo proprio', () => {
         await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
         await opPage.locator('input[type=password]').fill(newPwd);
         await opPage.locator('button[type=submit]').click();
-        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        await opPage.waitForURL(/\/scan$/, { timeout: 15_000 });
       } finally { await ctx.close(); }
     } finally {
       // re-login super_admin per cleanup
@@ -1127,7 +1269,7 @@ test.describe('Fine stagione (M8 Sub-A)', () => {
     await expect(page.locator('input[type=email]')).toBeVisible({ timeout: 8_000 });
   }
 
-  test('/admin/season da operator -> redirect /customers', async ({ page }) => {
+  test('/admin/season da operator -> redirect /scan (home operator)', async ({ page }) => {
     // Crea operator come super_admin, poi esegue il test con l'account operator.
     await loginAsSuperAdmin(page);
     const op = await createTestOperator(page);
@@ -1135,8 +1277,8 @@ test.describe('Fine stagione (M8 Sub-A)', () => {
       await logoutViaStorage(page);
       await loginAsOperator(page, op.email, op.password);
       await page.goto('/admin/season');
-      await page.waitForURL(/\/customers$/, { timeout: 15_000 });
-      await expect(page).toHaveURL(/\/customers$/);
+      await page.waitForURL(/\/scan$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/scan$/);
     } finally {
       // Cleanup: re-login super_admin e soft-delete.
       try { await logoutViaStorage(page); } catch (_e) { /* ignore */ }

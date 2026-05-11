@@ -3,6 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#145d2f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ABT">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <script src="/assets/pwa.js" defer></script>
   <title>Scansiona QR -- Customer QR Tracker</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
@@ -15,7 +22,23 @@
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
-    .qr-reader { width: 100%; max-width: 28rem; margin: 1rem auto; }
+    /* html5-qrcode inserisce un <video> con aspect-ratio della camera.
+       Vogliamo riempire l'altezza disponibile sotto la nav (no scroll)
+       senza forzare un quadrato che sprechi spazio su mobile portrait. */
+    .qr-reader {
+      width: 100%;
+      max-width: 28rem;
+      height: calc(100vh - 8rem);
+      max-height: 36rem;
+      margin: 1rem auto;
+      overflow: hidden;
+    }
+    .qr-reader video,
+    .qr-reader img {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+    }
   </style>
 </head>
 <body x-cloak x-data="scanPage" x-init="init()">

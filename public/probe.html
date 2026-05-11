@@ -3,6 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#145d2f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ABT">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <script src="/assets/pwa.js" defer></script>
   <title>Probe -- Customer QR Tracker</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
@@ -68,7 +75,8 @@
               { label: 'Edge function auth-ping?stamp=false', status: 'pending', summary: '', details: null },
               { label: 'Conteggi tabelle', status: 'pending', summary: '', details: null },
               { label: this.t.probe.openBalanceLabel, status: 'pending', summary: '', details: null },
-              { label: 'Profiles per ruolo', status: 'pending', summary: '', details: null }
+              { label: 'Profiles per ruolo', status: 'pending', summary: '', details: null },
+              { label: 'PWA installabile (manifest + SW)', status: 'pending', summary: '', details: null }
             ];
             await Promise.allSettled([
               this.runCheck(0, this.checkConfig.bind(this)),
@@ -77,7 +85,8 @@
               this.runCheck(3, this.checkAuthPing.bind(this)),
               this.runCheck(4, this.checkCounts.bind(this)),
               this.runCheck(5, this.checkOpenBalance.bind(this)),
-              this.runCheck(6, this.checkProfilesByRole.bind(this))
+              this.runCheck(6, this.checkProfilesByRole.bind(this)),
+              this.runCheck(7, this.checkPwa.bind(this))
             ]);
           },
           badgeClass(s) {
@@ -272,6 +281,67 @@
                 admin_deleted: aD.count,
                 operator_active: oA.count,
                 operator_deleted: oD.count
+              }
+            };
+          },
+          async checkPwa() {
+            var manifestStatus = null;
+            var manifestJson = null;
+            try {
+              var resp = await fetch('/manifest.webmanifest', { cache: 'no-store' });
+              manifestStatus = resp.status;
+              if (resp.ok) manifestJson = await resp.json();
+            } catch (e) {
+              return { status: 'FAIL', summary: 'fetch manifest fallita: ' + (e && e.message ? e.message : String(e)),
+                       details: { error: String(e) } };
+            }
+            if (manifestStatus !== 200 || !manifestJson) {
+              return { status: 'FAIL', summary: 'manifest HTTP ' + manifestStatus,
+                       details: { manifest_status: manifestStatus } };
+            }
+            var requiredFields = ['name', 'short_name', 'start_url', 'display', 'icons'];
+            var missing = requiredFields.filter(function (f) { return !(f in manifestJson); });
+            if (missing.length > 0) {
+              return { status: 'FAIL', summary: 'campi manifest mancanti: ' + missing.join(','),
+                       details: { manifest: manifestJson } };
+            }
+            var swSupported = ('serviceWorker' in navigator);
+            var swRegistered = false;
+            var swActive = false;
+            var swScope = null;
+            if (swSupported) {
+              try {
+                var reg = await navigator.serviceWorker.getRegistration();
+                swRegistered = !!reg;
+                swActive = !!(reg && reg.active);
+                swScope = reg ? reg.scope : null;
+              } catch (e) { /* no-op */ }
+            }
+            var displayMode = 'browser';
+            try {
+              if (window.matchMedia('(display-mode: standalone)').matches) displayMode = 'standalone';
+              else if (window.matchMedia('(display-mode: minimal-ui)').matches) displayMode = 'minimal-ui';
+              else if (window.matchMedia('(display-mode: fullscreen)').matches) displayMode = 'fullscreen';
+            } catch (e) { /* no-op */ }
+            var status = (swSupported && swRegistered) ? 'OK' : 'FAIL';
+            var swSummary = swActive ? 'active' : (swRegistered ? 'registered' : 'none');
+            return {
+              status: status,
+              summary: 'manifest="' + manifestJson.name + '", sw=' + swSummary + ', display=' + displayMode,
+              details: {
+                manifest_status: manifestStatus,
+                manifest_name: manifestJson.name,
+                manifest_short_name: manifestJson.short_name,
+                manifest_start_url: manifestJson.start_url,
+                manifest_display: manifestJson.display,
+                manifest_theme_color: manifestJson.theme_color,
+                manifest_icons_count: Array.isArray(manifestJson.icons) ? manifestJson.icons.length : 0,
+                sw_supported: swSupported,
+                sw_registered: swRegistered,
+                sw_active: swActive,
+                sw_scope: swScope,
+                display_mode: displayMode,
+                ios_safari: !!(window.PwaInstall && window.PwaInstall.isIosSafari && window.PwaInstall.isIosSafari())
               }
             };
           },

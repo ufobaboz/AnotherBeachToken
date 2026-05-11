@@ -221,3 +221,26 @@ nav.app-nav .nav-actions .btn {
   padding: 0 var(--sl-spacing-medium);
   font-size: var(--sl-button-font-size-small);
 }
+
+/* Burger menu visibile solo su mobile (< 720px). Il drawer e' sempre nel DOM
+   ma sl-drawer chiuso non occupa spazio. Su desktop nascondiamo il pulsante
+   burger; su mobile nascondiamo le .nav-actions inline e mostriamo il burger. */
+nav.app-nav .nav-burger {
+  display: none;
+  font-size: 1.4rem;
+}
+nav.app-nav .nav-drawer-menu {
+  border: none;
+}
+nav.app-nav .nav-drawer-menu sl-menu-item[data-current]::part(base) {
+  background: var(--sl-color-primary-50);
+  color: var(--sl-color-primary-700);
+  font-weight: 600;
+}
+
+@media (max-width: 719px) {
+  nav.app-nav .nav-actions { display: none; }
+  nav.app-nav .nav-burger { display: inline-flex; }
+  nav.app-nav { flex-wrap: nowrap; }
+  nav.app-nav h1 { font-size: var(--sl-font-size-medium); }
+}
