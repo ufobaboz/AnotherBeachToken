@@ -1001,3 +1001,179 @@ test.describe('Profilo proprio', () => {
   });
 
 });
+
+// ----------------------------------------------------------------------
+// Fine stagione (M8 Sub-A)
+// IMPORTANTE: questo describe deve restare ULTIMO nella suite.
+// L'ultimo test esegue un reset distruttivo su DEV che svuota customers
+// e transactions; nessun test successivo deve girare dopo di lui.
+// ----------------------------------------------------------------------
+test.describe('Fine stagione (M8 Sub-A)', () => {
+
+  // Funzione di logout pulita: rimuove lo storage Supabase e attende /login.
+  async function logoutViaStorage(page: Parameters<typeof loginAsSuperAdmin>[0]) {
+    await page.evaluate(() => {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('sb-'))
+        .forEach((k) => localStorage.removeItem(k));
+    });
+    await page.goto('/login');
+    await expect(page.locator('input[type=email]')).toBeVisible({ timeout: 8_000 });
+  }
+
+  test('/admin/season da operator -> redirect /customers', async ({ page }) => {
+    // Crea operator come super_admin, poi esegue il test con l'account operator.
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      await logoutViaStorage(page);
+      await loginAsOperator(page, op.email, op.password);
+      await page.goto('/admin/season');
+      await page.waitForURL(/\/customers$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/customers$/);
+    } finally {
+      // Cleanup: re-login super_admin e soft-delete.
+      try { await logoutViaStorage(page); } catch (_e) { /* ignore */ }
+      await loginAsSuperAdmin(page);
+      await softDeleteTestProfile(page, op.id);
+    }
+  });
+
+  test('/admin/season da admin -> redirect /customers', async ({ page }) => {
+    // Crea admin come super_admin, poi esegue il test con l'account admin.
+    await loginAsSuperAdmin(page);
+    const adm = await createTestAdmin(page);
+    try {
+      await logoutViaStorage(page);
+      await loginAsAdmin(page, adm.email, adm.password);
+      await page.goto('/admin/season');
+      await page.waitForURL(/\/customers$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/customers$/);
+    } finally {
+      try { await logoutViaStorage(page); } catch (_e) { /* ignore */ }
+      await loginAsSuperAdmin(page);
+      await softDeleteTestProfile(page, adm.id);
+    }
+  });
+
+  test('/admin/season da super_admin -> render OK', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/admin/season');
+    // Attende che Alpine rimuova x-cloak (guard ok).
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    // Heading principale visibile.
+    await expect(page.getByRole('heading', { name: 'Fine stagione' })).toBeVisible({ timeout: 8_000 });
+    // 3 bottoni download visibili.
+    await expect(page.getByRole('button', { name: 'Scarica customers.csv' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Scarica transactions.csv' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Scarica profiles.csv' })).toBeVisible();
+    // Bottone reset visibile nella sezione reset.
+    await expect(page.locator('section.reset button')).toBeVisible();
+  });
+
+  test('download customers.csv produce un file con BOM e separator ;', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/admin/season');
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Scarica customers.csv' }).click(),
+    ]);
+    // Filename nel pattern atteso.
+    expect(download.suggestedFilename()).toMatch(/^customers-\d{4}-\d{2}-\d{2}\.csv$/);
+    // Contenuto: BOM (0xFEFF) in prima posizione, separatore ; nella prima riga, colonna first_name.
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk as Uint8Array));
+    const content = Buffer.concat(chunks).toString('utf8');
+    expect(content.charCodeAt(0)).toBe(0xfeff);
+    const firstLine = content.split('\n')[0];
+    expect(firstLine).toContain(';');
+    expect(firstLine).toContain('first_name');
+  });
+
+  test('download transactions.csv produce un file', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/admin/season');
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Scarica transactions.csv' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^transactions-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  test('download profiles.csv produce un file', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/admin/season');
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Scarica profiles.csv' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^profiles-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  test("modal type-to-confirm: bottone disabled finche' input != 'RESET STAGIONE'", async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/admin/season');
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    // Apre il dialog tramite il bottone nella sezione reset (non quello nel footer del dialog).
+    await page.locator('section.reset button').click();
+    const dialog = page.locator('sl-dialog[label="Reset stagione"]');
+    await expect(dialog).toBeVisible({ timeout: 8_000 });
+    const dangerBtn = page.locator('sl-dialog sl-button[variant="danger"]');
+    const confirmInput = page.locator('input.confirm-input');
+    // Sl-button reflecta il flag boolean disabled come attribute "disabled" (valore "disabled"),
+    // quindi toHaveAttribute('disabled', '') fallirebbe sul valore esatto. Si interroga
+    // direttamente la property `.disabled` del custom element via evaluate + expect.poll.
+    const isDangerDisabled = () => dangerBtn.evaluate((el: { disabled: boolean }) => el.disabled);
+    // Input sbagliato (lowercase) -> bottone danger disabled.
+    await confirmInput.fill('reset stagione');
+    await expect.poll(isDangerDisabled, { timeout: 8_000 }).toBe(true);
+    // Input corretto -> bottone abilitato.
+    await confirmInput.fill('RESET STAGIONE');
+    await expect.poll(isDangerDisabled, { timeout: 8_000 }).toBe(false);
+    // Chiude il dialog senza eseguire il reset.
+    await page.locator('sl-dialog sl-button[variant="default"]').click();
+  });
+
+  // ATTENZIONE: questo test e' DISTRUTTIVO su DEV. Tronca customers e transactions.
+  // Deve essere l'ULTIMO test dell'intera suite -- nessun test successivo deve girare.
+  test('reset reale: pre-fixture, conferma, post-counts a zero', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    // Pre-fixture: almeno 1 customer + 1 transaction su DEV. Le helper hanno gia'
+    // waitForURL/waitForResponse sui POST -> non serve un check supplementare via probe.
+    const c1 = await createTestCustomer(page);
+    await chargeAmount(page, c1.id, '5', '50');
+    // Naviga alla pagina fine stagione.
+    await page.goto('/admin/season');
+    await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
+    // Apre il dialog reset e compila la stringa di conferma.
+    await page.locator('section.reset button').click();
+    const dialog = page.locator('sl-dialog[label="Reset stagione"]');
+    await expect(dialog).toBeVisible({ timeout: 8_000 });
+    await page.locator('input.confirm-input').fill('RESET STAGIONE');
+    // Click conferma + attesa risposta 200 dall'edge function.
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/functions/v1/reset-season') && r.status() === 200,
+        { timeout: 15_000 }
+      ),
+      page.locator('sl-dialog sl-button[variant="danger"]').click(),
+    ]);
+    // Post-reset: verifica counts a zero su /probe.
+    await page.goto('/probe');
+    // Attende che i check siano risolti (no badge-pending).
+    const allBadges = page.locator('.check .badge');
+    await expect(allBadges.first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.check .badge.badge-pending')).toHaveCount(0, { timeout: 30_000 });
+    const probeTextPost = await page.locator('body').innerText();
+    expect(probeTextPost).toMatch(/customers=0 attivi\/0 cancellati/);
+    expect(probeTextPost).toMatch(/transactions: charges 0 aperti\/0 saldati/);
+    // Smoke post-reset: profilo super_admin ancora intatto -> /customers/new carica OK.
+    await page.goto('/customers/new');
+    await expect(page.locator('input[type=text]').first()).toBeVisible({ timeout: 8_000 });
+  });
+
+});

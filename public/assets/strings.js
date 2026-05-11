@@ -3,7 +3,10 @@
 // apostrofi tipografici. Le pagine consumano window.Strings.<section>.<key>.
 window.Strings = {
   nav: {
-    profile: 'Profilo'
+    profile: 'Profilo',
+    season: 'Stagione',
+    users: 'Utenti',
+    backupR2: 'Backup R2'
   },
   app: {
     title: 'Customer QR Tracker'
@@ -262,6 +265,34 @@ window.Strings = {
     changePasswordError: 'Errore in fase di cambio password. Riprova.'
   },
   logout: 'Esci',
+  adminSeason: {
+    title: 'Fine stagione',
+    backToCustomers: 'Torna alla lista clienti',
+    intro: 'Operazione di fine stagione. Scarica gli archivi prima di resettare.',
+    archiveTitle: 'Archivio',
+    archiveHint: 'Tutte le righe (incluse cancellate). Date in fuso Europe/Rome. Salva i file nel tuo archivio personale.',
+    downloadCustomers: 'Scarica customers.csv',
+    downloadTransactions: 'Scarica transactions.csv',
+    downloadProfiles: 'Scarica profiles.csv',
+    downloadingCustomers: 'Scaricando customers...',
+    downloadingTransactions: 'Scaricando transactions...',
+    downloadingProfiles: 'Scaricando profiles...',
+    resetTitle: 'Reset stagione',
+    resetIntro: 'Cancella DEFINITIVAMENTE tutti i clienti e tutte le transazioni. I profili (operatori) restano intatti.',
+    resetButton: 'Reset stagione',
+    resetDialogTitle: 'Reset stagione',
+    resetDialogBody: 'Cancellazione irreversibile.',
+    resetConfirmHint: 'Per confermare digita esattamente:',
+    resetConfirmString: 'RESET STAGIONE',
+    resetConfirmPlaceholder: 'RESET STAGIONE',
+    cancel: 'Annulla',
+    confirmReset: 'Conferma reset',
+    resetting: 'Reset in corso...',
+    resetSuccess: 'Stagione resettata. Customers e transactions sono ora vuote.',
+    resetError: 'Errore durante il reset. Vedi console per i dettagli.',
+    downloadError: 'Errore durante il download. Vedi console per i dettagli.',
+    rowsCount: function (n) { return n + ' righe'; }
+  },
   probe: {
     title: 'Probe diagnostico',
     statusOk: 'OK',
