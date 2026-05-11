@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fine stagione -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -18,12 +17,12 @@
   <style>
     [x-cloak] { display: none !important; }
     section.archive, section.reset { margin-top: 1.5rem; padding: 1rem; border-radius: 0.3rem; }
-    section.archive { background: var(--pico-card-background-color); }
+    section.archive { background: var(--sl-color-neutral-50); }
     section.reset { background: #2a1414; border: 1px solid #8a1f1f; }
     section.reset h2 { color: #f08080; }
     .download-row { display: flex; flex-direction: column; gap: 0.5rem; max-width: 320px; }
     .download-row button { margin: 0; }
-    .download-row small { color: var(--pico-muted-color); }
+    .download-row small { color: var(--sl-color-neutral-500); }
     article[role="status"] { padding: 0.6rem 0.9rem; margin-bottom: 1rem; background: #1c5d31; color: #fff; border-radius: 0.3rem; }
     article.error { background: #8a1f1f; color: #fff; }
     sl-dialog form label { display: block; margin-bottom: 0.5rem; }
@@ -39,7 +38,7 @@
       <a target="_blank" rel="noopener noreferrer"
          href="https://dash.cloudflare.com/9aea46551a6124e9e4d0233168e81f47/r2/default/buckets/anotherbeach-backups"
          x-text="t.nav.backupR2"></a>
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
 
@@ -54,13 +53,13 @@
     <section class="archive">
       <h2 x-text="t.adminSeason.archiveTitle"></h2>
       <div class="download-row">
-        <button class="primary" :disabled="downloading.customers"
+        <button class="btn btn--primary" :disabled="downloading.customers"
                 @click="downloadTable('customers')"
                 x-text="downloading.customers ? t.adminSeason.downloadingCustomers : t.adminSeason.downloadCustomers"></button>
-        <button class="primary" :disabled="downloading.transactions"
+        <button class="btn btn--primary" :disabled="downloading.transactions"
                 @click="downloadTable('transactions')"
                 x-text="downloading.transactions ? t.adminSeason.downloadingTransactions : t.adminSeason.downloadTransactions"></button>
-        <button class="primary" :disabled="downloading.profiles"
+        <button class="btn btn--primary" :disabled="downloading.profiles"
                 @click="downloadTable('profiles')"
                 x-text="downloading.profiles ? t.adminSeason.downloadingProfiles : t.adminSeason.downloadProfiles"></button>
         <small x-text="t.adminSeason.archiveHint"></small>
@@ -70,7 +69,7 @@
     <section class="reset">
       <h2 x-text="t.adminSeason.resetTitle"></h2>
       <p x-text="t.adminSeason.resetIntro"></p>
-      <button class="contrast" @click="openResetDialog()" x-text="t.adminSeason.resetButton"></button>
+      <button class="btn btn--danger" @click="openResetDialog()" x-text="t.adminSeason.resetButton"></button>
     </section>
 
     <sl-dialog x-ref="resetDialog" :label="t.adminSeason.resetDialogTitle">

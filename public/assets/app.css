@@ -1,22 +1,174 @@
 /* repo/public/assets/app.css
-   Stili condivisi fra le pagine autenticate. Niente <nav class="app-nav">
-   inline duplicato. */
+   Stili condivisi fra le pagine. Tutti i valori derivano dai token
+   Shoelace (--sl-*); niente Pico, niente token paralleli. */
+
+/* ============================================================
+   Layer 0 -- reset minimale
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: var(--sl-font-sans);
+  font-size: var(--sl-font-size-medium);
+  line-height: var(--sl-line-height-normal);
+  color: var(--sl-color-neutral-900);
+  background: var(--sl-color-neutral-0);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* ============================================================
+   Layer 1 -- tag base tokenizzati
+   ============================================================ */
+main.container {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: var(--sl-spacing-medium) var(--sl-spacing-medium) var(--sl-spacing-x-large);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0 0 var(--sl-spacing-small);
+  font-weight: var(--sl-font-weight-semibold);
+  line-height: var(--sl-line-height-dense);
+  color: var(--sl-color-neutral-900);
+}
+h1 { font-size: var(--sl-font-size-2x-large); }
+h2 { font-size: var(--sl-font-size-x-large); }
+h3 { font-size: var(--sl-font-size-large); }
+h4 { font-size: var(--sl-font-size-medium); }
+
+p { margin: 0 0 var(--sl-spacing-medium); }
+small { font-size: var(--sl-font-size-small); color: var(--sl-color-neutral-600); }
+
+hgroup { margin-bottom: var(--sl-spacing-large); }
+hgroup > * { margin-bottom: 0; }
+hgroup > :first-child { margin-bottom: var(--sl-spacing-2x-small); }
+hgroup > :not(:first-child) { color: var(--sl-color-neutral-600); }
+
+a {
+  color: var(--sl-color-primary-600);
+  text-decoration: none;
+}
+a:hover { color: var(--sl-color-primary-700); text-decoration: underline; }
+a:focus-visible { outline: var(--sl-focus-ring); outline-offset: var(--sl-focus-ring-offset); }
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--sl-color-neutral-200);
+  margin: var(--sl-spacing-medium) 0;
+}
+
+/* Form layout: <form> > <label> > <span>+<input> pattern */
+form > * + * { margin-top: var(--sl-spacing-medium); }
+label { display: block; font-size: var(--sl-font-size-small); color: var(--sl-color-neutral-700); }
+label > span { display: block; margin-bottom: var(--sl-spacing-2x-small); }
+
+/* Input/textarea/select nativi tokenizzati per matchare <sl-input> */
+input, textarea, select {
+  width: 100%;
+  font-family: var(--sl-input-font-family);
+  font-size: var(--sl-input-font-size-medium);
+  color: var(--sl-input-color);
+  background: var(--sl-input-background-color);
+  border: solid var(--sl-input-border-width) var(--sl-input-border-color);
+  border-radius: var(--sl-input-border-radius-medium);
+  padding: 0 var(--sl-input-spacing-medium);
+  height: var(--sl-input-height-medium);
+  line-height: var(--sl-input-height-medium);
+  transition: var(--sl-transition-fast) border-color, var(--sl-transition-fast) box-shadow;
+}
+textarea { height: auto; line-height: var(--sl-line-height-normal); padding: var(--sl-input-spacing-medium); }
+input:hover, textarea:hover, select:hover { border-color: var(--sl-input-border-color-hover); }
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--sl-input-border-color-focus);
+  box-shadow: 0 0 0 var(--sl-focus-ring-width) var(--sl-input-focus-ring-color);
+}
+input:disabled, textarea:disabled, select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="true"] {
+  border-color: var(--sl-color-danger-600);
+}
+
+/* Button nativo tokenizzato: match visivo con <sl-button> default
+   (variant=default). Le variant si scelgono via utility class (.btn--*). */
+button {
+  font-family: var(--sl-input-font-family);
+  font-size: var(--sl-button-font-size-medium);
+  font-weight: var(--sl-font-weight-semibold);
+  height: var(--sl-input-height-medium);
+  padding: 0 var(--sl-spacing-large);
+  border-radius: var(--sl-input-border-radius-medium);
+  border: solid var(--sl-input-border-width) var(--sl-color-neutral-300);
+  background: var(--sl-color-neutral-0);
+  color: var(--sl-color-neutral-700);
+  cursor: pointer;
+  transition: var(--sl-transition-fast) all;
+}
+button:hover { background: var(--sl-color-neutral-50); border-color: var(--sl-color-neutral-400); }
+button:focus-visible { outline: none; box-shadow: 0 0 0 var(--sl-focus-ring-width) var(--sl-input-focus-ring-color); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ============================================================
+   Layer 2 -- utility classes
+   ============================================================ */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--sl-spacing-x-small); text-decoration: none; }
+.btn:hover { text-decoration: none; }
+
+.btn--primary {
+  background: var(--sl-color-primary-600);
+  border-color: var(--sl-color-primary-600);
+  color: var(--sl-color-neutral-0);
+}
+.btn--primary:hover { background: var(--sl-color-primary-700); border-color: var(--sl-color-primary-700); color: var(--sl-color-neutral-0); }
+
+.btn--outline {
+  background: var(--sl-color-neutral-0);
+  border-color: var(--sl-color-neutral-300);
+  color: var(--sl-color-neutral-700);
+}
+.btn--outline:hover { background: var(--sl-color-neutral-50); border-color: var(--sl-color-neutral-400); color: var(--sl-color-neutral-700); }
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--sl-color-neutral-700);
+}
+.btn--ghost:hover { background: var(--sl-color-neutral-100); color: var(--sl-color-neutral-900); }
+
+.btn--danger {
+  background: var(--sl-color-danger-600);
+  border-color: var(--sl-color-danger-600);
+  color: var(--sl-color-neutral-0);
+}
+.btn--danger:hover { background: var(--sl-color-danger-700); border-color: var(--sl-color-danger-700); color: var(--sl-color-neutral-0); }
+
+.error-text { color: var(--sl-color-danger-600); font-size: var(--sl-font-size-small); }
+.muted { color: var(--sl-color-neutral-500); }
+.card {
+  background: var(--sl-color-neutral-50);
+  border: 1px solid var(--sl-color-neutral-200);
+  border-radius: var(--sl-border-radius-medium);
+  padding: var(--sl-spacing-medium);
+}
+
+/* ============================================================
+   App nav (preservato dal vecchio app.css)
+   ============================================================ */
 nav.app-nav {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--pico-muted-border-color);
+  padding: var(--sl-spacing-x-small) var(--sl-spacing-medium);
+  border-bottom: 1px solid var(--sl-color-neutral-200);
 }
-nav.app-nav h1 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-nav.app-nav .nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-nav.app-nav .nav-actions a {
-  font-size: 0.95rem;
-}
+nav.app-nav h1 { margin: 0; font-size: var(--sl-font-size-large); }
+nav.app-nav .nav-actions { display: flex; align-items: center; gap: var(--sl-spacing-x-small); }
+nav.app-nav .nav-actions a { font-size: var(--sl-font-size-medium); }

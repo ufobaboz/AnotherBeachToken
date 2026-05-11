@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Probe -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
   <script src="/assets/config.js"></script>
@@ -19,7 +19,7 @@
     .badge-fail { background: #8a1f1f; color: #fff; }
     .badge-na   { background: #555;    color: #fff; }
     .badge-pending { background: #777;    color: #fff; }
-    pre { background: var(--pico-card-background-color); padding: 0.5rem; overflow-x: auto; font-size: 0.8rem; }
+    pre { background: var(--sl-color-neutral-50); padding: 0.5rem; overflow-x: auto; font-size: 0.8rem; }
   </style>
 </head>
 <body x-cloak x-data="probePage" x-init="init()">
@@ -32,7 +32,7 @@
       <a target="_blank" rel="noopener noreferrer"
          href="https://dash.cloudflare.com/9aea46551a6124e9e4d0233168e81f47/r2/default/buckets/anotherbeach-backups"
          x-text="t.nav.backupR2"></a>
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
 

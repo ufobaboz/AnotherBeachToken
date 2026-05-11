@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gestione utenti -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -26,7 +25,7 @@
     }
     article.error { background: #8a1f1f; color: #fff; }
     sl-dialog form label { display: block; margin-bottom: 0.5rem; }
-    sl-dialog small.hint { color: var(--pico-muted-color); display: block; margin-top: -0.25rem; }
+    sl-dialog small.hint { color: var(--sl-color-neutral-500); display: block; margin-top: -0.25rem; }
     tr.deleted { opacity: 0.5; }
     .role-badge { font-size: 0.85rem; font-family: monospace; }
     .deleted-mark { font-size: 0.8rem; color: #8a1f1f; margin-left: 0.4rem; }
@@ -42,15 +41,15 @@
          x-show="role === 'super_admin'" x-cloak
          href="https://dash.cloudflare.com/9aea46551a6124e9e4d0233168e81f47/r2/default/buckets/anotherbeach-backups"
          x-text="t.nav.backupR2"></a>
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
   <main class="container">
     <a href="/customers" x-text="t.adminUsers.backToCustomers"></a>
 
     <div class="actions-bar">
-      <button class="primary" @click="openCreateDialog('operator')" x-text="t.adminUsers.newOperatorButton"></button>
-      <button class="primary" x-show="role === 'super_admin'" x-cloak
+      <button class="btn btn--primary" @click="openCreateDialog('operator')" x-text="t.adminUsers.newOperatorButton"></button>
+      <button class="btn btn--primary" x-show="role === 'super_admin'" x-cloak
               @click="openCreateDialog('admin')" x-text="t.adminUsers.newAdminButton"></button>
       <label x-show="role === 'super_admin'" x-cloak>
         <input type="checkbox" x-model="showDeleted" @change="loadUsers()">
@@ -86,13 +85,13 @@
             <td x-text="formatLastLogin(op.last_login_at)"></td>
             <td>
               <div class="row-actions" x-show="!op.deleted_at" x-cloak>
-                <button class="secondary" x-show="canEdit(op)" x-cloak
+                <button class="btn btn--outline" x-show="canEdit(op)" x-cloak
                         @click="openEditDialog(op)" x-text="t.adminUsers.editButton"></button>
-                <button class="secondary" x-show="canResetPw(op)" x-cloak
+                <button class="btn btn--outline" x-show="canResetPw(op)" x-cloak
                         @click="openResetPwDialog(op)" x-text="t.adminUsers.resetPwButton"></button>
-                <button class="secondary" x-show="canChangeRole(op)" x-cloak
+                <button class="btn btn--outline" x-show="canChangeRole(op)" x-cloak
                         @click="openChangeRoleDialog(op)" x-text="t.adminUsers.changeRoleButton"></button>
-                <button class="contrast" x-show="canDelete(op)" x-cloak
+                <button class="btn btn--danger" x-show="canDelete(op)" x-cloak
                         @click="openDeleteDialog(op)" x-text="t.adminUsers.deleteButton"></button>
               </div>
             </td>

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Scansiona QR -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
   <script src="/assets/config.js"></script>
@@ -22,14 +22,14 @@
     <h1 x-text="t.scan.title"></h1>
     <div class="nav-actions">
       <a href="/me" x-text="t.nav.profile"></a>
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
   <main class="container">
     <div id="reader" class="qr-reader" x-show="!error" x-cloak></div>
     <article x-show="error" x-cloak role="alert">
       <p x-text="error"></p>
-      <a href="/customers" role="button" class="secondary" x-text="t.scan.backToList"></a>
+      <a href="/customers" class="btn btn--outline" x-text="t.scan.backToList"></a>
     </article>
   </main>
   <script>

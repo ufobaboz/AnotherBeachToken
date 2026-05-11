@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chiusura conto -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
   <script src="/assets/config.js"></script>
@@ -15,7 +15,7 @@
     [x-cloak] { display: none !important; }
     .balance-card {
       padding: 0.75rem 1rem;
-      background: var(--pico-card-background-color);
+      background: var(--sl-color-neutral-50);
       border-radius: 0.4rem;
       margin: 0.5rem 0 1rem 0;
       font-size: 1.15rem;
@@ -26,10 +26,10 @@
       grid-template-columns: auto 1fr auto;
       gap: 0.25rem 0.75rem;
       padding: 0.5rem 0.4rem;
-      border-bottom: 1px solid var(--pico-muted-border-color);
+      border-bottom: 1px solid var(--sl-color-neutral-200);
     }
     li.tx-reversed .tx-desc { text-decoration: line-through; opacity: 0.6; }
-    .tx-time { font-size: 0.85rem; color: var(--pico-muted-color); }
+    .tx-time { font-size: 0.85rem; color: var(--sl-color-neutral-500); }
     .badge {
       display: inline-block;
       padding: 0.1rem 0.5rem;
@@ -58,7 +58,7 @@
     <h1 x-text="t.checkout.title"></h1>
     <div class="nav-actions">
       <a href="/me" x-text="t.nav.profile"></a>
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
   <main class="container">
@@ -104,7 +104,7 @@
           </label>
         </div>
 
-        <button class="primary submit-cta"
+        <button class="btn btn--primary submit-cta"
                 x-show="!postUpdateAlert"
                 :disabled="!canSubmit()"
                 @click="submit()"
@@ -114,7 +114,7 @@
 
         <div class="race-alert" x-show="postUpdateAlert" x-cloak>
           <p x-text="postUpdateAlert ? t.checkout.raceAlert(postUpdateAlert.newCount) : ''"></p>
-          <button class="contrast" @click="reloadPage()" x-text="t.checkout.raceReload"></button>
+          <button class="btn btn--primary" @click="reloadPage()" x-text="t.checkout.raceReload"></button>
         </div>
       </div>
     </template>
