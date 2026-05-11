@@ -1,0 +1,25 @@
+project_id = "anotherbeachproject"
+
+[functions.auth-ping]
+verify_jwt = true
+
+[functions.create-operator]
+verify_jwt = false
+
+[functions.update-profile]
+verify_jwt = false
+
+[functions.reset-password]
+verify_jwt = false
+
+[functions.soft-delete-profile]
+verify_jwt = false
+
+[functions.change-role]
+verify_jwt = false
+
+[functions.change-own-password]
+verify_jwt = false
+
+[functions.reset-season]
+verify_jwt = false

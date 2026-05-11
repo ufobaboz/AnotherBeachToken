@@ -36,7 +36,12 @@
   <nav class="app-nav">
     <h1 x-text="t.adminUsers.title"></h1>
     <div class="nav-actions">
+      <a href="/admin/season" x-show="role === 'super_admin'" x-cloak x-text="t.nav.season"></a>
       <a href="/me" x-text="t.nav.profile"></a>
+      <a target="_blank" rel="noopener noreferrer"
+         x-show="role === 'super_admin'" x-cloak
+         href="https://dash.cloudflare.com/9aea46551a6124e9e4d0233168e81f47/r2/default/buckets/anotherbeach-backups"
+         x-text="t.nav.backupR2"></a>
       <button class="secondary" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
