@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dettaglio cliente -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -22,7 +21,7 @@
     img.qr-preview { max-width: 200px; image-rendering: pixelated; }
     .balance-card {
       padding: 0.75rem 1rem;
-      background: var(--pico-card-background-color);
+      background: var(--sl-color-neutral-50);
       border-radius: 0.4rem;
       margin-bottom: 0.75rem;
       font-size: 1.1rem;
@@ -34,10 +33,10 @@
       grid-template-rows: auto auto;
       gap: 0.25rem 0.75rem;
       padding: 0.6rem 0.4rem;
-      border-bottom: 1px solid var(--pico-muted-border-color);
+      border-bottom: 1px solid var(--sl-color-neutral-200);
     }
     li.tx-reversed .tx-desc { text-decoration: line-through; opacity: 0.6; }
-    .tx-time { font-size: 0.85rem; color: var(--pico-muted-color); }
+    .tx-time { font-size: 0.85rem; color: var(--sl-color-neutral-500); }
     .tx-action { grid-column: 1 / -1; text-align: right; }
     .tx-storna-btn { padding: 0.25rem 0.75rem; font-size: 0.85rem; margin: 0; }
     .badge {
@@ -50,7 +49,7 @@
     .badge-aperto  { background: #f3a712; color: #fff; }
     .badge-storno  { background: #555;    color: #fff; }
     .badge-saldato { background: #1c5d31; color: #fff; }
-    .tx-paid-info  { grid-column: 2 / -1; font-size: 0.85rem; color: var(--pico-muted-color); }
+    .tx-paid-info  { grid-column: 2 / -1; font-size: 0.85rem; color: var(--sl-color-neutral-500); }
     .pos-cta-inline {
       width: 100%;
       margin-bottom: 1rem;
@@ -59,13 +58,13 @@
     }
     .pos-overlay {
       position: fixed; inset: 0; z-index: 1000;
-      background: var(--pico-background-color);
+      background: var(--sl-color-neutral-0);
       display: flex; flex-direction: column;
       padding: 1rem;
     }
-    .pos-header { text-align: center; padding-bottom: 0.5rem; border-bottom: 1px solid var(--pico-muted-border-color); }
+    .pos-header { text-align: center; padding-bottom: 0.5rem; border-bottom: 1px solid var(--sl-color-neutral-200); }
     .pos-customer { font-size: 1.1rem; font-weight: bold; }
-    .pos-balance { font-size: 0.9rem; color: var(--pico-muted-color); }
+    .pos-balance { font-size: 0.9rem; color: var(--sl-color-neutral-500); }
     .pos-display {
       font-size: clamp(2.5rem, 12vw, 4rem);
       font-weight: bold; text-align: center;
@@ -90,7 +89,7 @@
     <h1 x-text="t.customerDetail.title"></h1>
     <div class="nav-actions">
       <a href="/me" x-text="t.nav.profile"></a>
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
   <main class="container">
@@ -103,16 +102,16 @@
         <h2 x-text="customer.last_name + ' ' + customer.first_name"></h2>
 
         <div class="actions-bar">
-          <a :href="qrDataUrl" :download="qrFileName" role="button" x-show="qrDataUrl" x-cloak
+          <a :href="qrDataUrl" :download="qrFileName" class="btn btn--outline" x-show="qrDataUrl" x-cloak
              x-text="t.customerDetail.downloadQr"></a>
-          <a :href="whatsappQrUrl" target="_blank" rel="noopener" role="button"
-             class="secondary" x-text="t.customerDetail.sendQrWhatsApp"></a>
-          <a :href="whatsappBalanceUrl" target="_blank" rel="noopener" role="button"
-             class="secondary" x-text="t.customerDetail.balance.sendWhatsApp"></a>
-          <a :href="'/checkout/' + customer.id" role="button"
+          <a :href="whatsappQrUrl" target="_blank" rel="noopener"
+             class="btn btn--outline" x-text="t.customerDetail.sendQrWhatsApp"></a>
+          <a :href="whatsappBalanceUrl" target="_blank" rel="noopener"
+             class="btn btn--outline" x-text="t.customerDetail.balance.sendWhatsApp"></a>
+          <a :href="'/checkout/' + customer.id" class="btn btn--primary"
              x-show="canCheckout" x-cloak
              x-text="t.customerDetail.ctaCheckout"></a>
-          <button class="contrast" @click="openDeleteDialog()" x-show="canDelete" x-cloak
+          <button class="btn btn--danger" @click="openDeleteDialog()" x-show="canDelete" x-cloak
                   x-text="t.customerDetail.deleteButton"></button>
         </div>
 
@@ -139,7 +138,7 @@
           <strong x-text="t.customerDetail.balance.label"></strong>:
           <span x-text="formatBalance(openBalance) + ' EUR'"></span>
         </div>
-        <button class="primary pos-cta-inline" @click="openPos()" x-text="t.customerDetail.charge.ctaNew"></button>
+        <button class="btn btn--primary pos-cta-inline" @click="openPos()" x-text="t.customerDetail.charge.ctaNew"></button>
 
         <article x-show="transactions.length === 0" x-cloak>
           <p x-text="t.customerDetail.transactions.empty"></p>
@@ -154,7 +153,7 @@
                 <span class="badge" :class="badgeClass(tx)" x-text="badgeText(tx)"></span>
               </div>
               <div class="tx-action" x-show="canReverse(tx)" x-cloak>
-                <button class="contrast outline tx-storna-btn"
+                <button class="btn btn--outline tx-storna-btn"
                         @click="openReversalDialog(tx)"
                         x-text="t.customerDetail.reversal.button"></button>
               </div>
@@ -186,10 +185,10 @@
             <button type="button" @click="posBackspace()" :aria-label="t.customerDetail.charge.backspaceLabel">&larr;</button>
           </div>
           <div class="pos-actions">
-            <button class="primary pos-cta" :disabled="!posValid() || posSubmitting"
+            <button class="btn btn--primary pos-cta" :disabled="!posValid() || posSubmitting"
                     @click="submitCharge()"
                     x-text="posSubmitting ? t.customerDetail.charge.submitting : t.customerDetail.charge.submit"></button>
-            <button class="secondary" @click="closePos()" x-text="t.customerDetail.charge.cancel"></button>
+            <button class="btn btn--outline" @click="closePos()" x-text="t.customerDetail.charge.cancel"></button>
           </div>
           <div x-show="posError" x-cloak class="pos-error" role="alert" x-text="posError"></div>
         </div>
