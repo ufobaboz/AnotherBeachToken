@@ -1,6 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
-const APP_URL = process.env.APP_URL || 'https://anotherbeachproject.sovereto.workers.dev';
+// Default DEV: la suite scrive su DB (insert customers/operators) e per policy
+// le scritture da automazioni vivono solo su DEV. Override APP_URL per smoke
+// read-only su PRD se serve.
+const APP_URL = process.env.APP_URL || 'https://anotherbeachproject-dev.sovereto.workers.dev';
 
 export default defineConfig({
   testDir: './specs',

@@ -13,6 +13,7 @@ import {
   createTestCustomer,
   softDeleteTestCustomer,
   chargeAmount,
+  insertChargeViaApi,
   getCustomerQrToken,
   createTestOperator,
   softDeleteTestOperator,
@@ -71,6 +72,52 @@ test.describe('Asset self-hosted', () => {
 });
 
 // ----------------------------------------------------------------------
+// PWA installabile (manifest + service worker + icone + pulsante "Installa")
+// ----------------------------------------------------------------------
+test.describe('PWA installabile', () => {
+
+  test('/login include link manifest + meta PWA', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page.locator('link[rel=manifest]')).toHaveAttribute('href', '/manifest.webmanifest');
+    await expect(page.locator('meta[name=theme-color]')).toHaveAttribute('content', /#145d2f/i);
+    await expect(page.locator('link[rel=apple-touch-icon]')).toHaveAttribute('href', '/icons/apple-touch-icon.png');
+  });
+
+  test('manifest.webmanifest valido + icone + sw raggiungibili', async ({ request }) => {
+    const manifest = await request.get('/manifest.webmanifest');
+    expect(manifest.status()).toBe(200);
+    const json = await manifest.json();
+    expect(json.name).toBeTruthy();
+    expect(json.short_name).toBeTruthy();
+    expect(json.start_url).toBe('/login');
+    expect(json.display).toBe('standalone');
+    expect(Array.isArray(json.icons)).toBe(true);
+    const sizes = json.icons.map((i: { sizes: string }) => i.sizes);
+    expect(sizes).toContain('192x192');
+    expect(sizes).toContain('512x512');
+    const hasMaskable = json.icons.some((i: { purpose: string }) => /maskable/.test(i.purpose));
+    expect(hasMaskable).toBe(true);
+    for (const icon of json.icons) {
+      const resp = await request.get(icon.src);
+      expect(resp.status(), icon.src).toBe(200);
+    }
+    const sw = await request.get('/sw.js');
+    expect(sw.status()).toBe(200);
+    const appleTouch = await request.get('/icons/apple-touch-icon.png');
+    expect(appleTouch.status()).toBe(200);
+  });
+
+  test('pulsante "Installa app" iniettato nella nav su pagina operatore', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    // pwa.js gira al DOMContentLoaded e aggiunge un <button data-pwa-install>
+    // in .nav-actions. Resta hidden finche' il browser non supporta install,
+    // ma il nodo deve esistere.
+    await expect(page.locator('nav.app-nav .nav-actions [data-pwa-install]')).toHaveCount(1);
+  });
+
+});
+
+// ----------------------------------------------------------------------
 // Auth & sessione
 // ----------------------------------------------------------------------
 test.describe('Auth & sessione', () => {
@@ -101,7 +148,7 @@ test.describe('Auth & sessione', () => {
     await loginAsSuperAdmin(page);
     await Promise.all([
       page.waitForURL(/\/login$/, { timeout: 10_000 }),
-      page.locator('nav.app-nav button.secondary').click(),
+      page.locator('nav.app-nav button.btn--outline').click(),
     ]);
     await expect(page).toHaveURL(/\/login$/);
   });
@@ -110,6 +157,198 @@ test.describe('Auth & sessione', () => {
     await page.goto('/customers');
     await page.waitForURL(/\/login$/, { timeout: 10_000 });
     await expect(page).toHaveURL(/\/login$/);
+  });
+
+});
+
+// ----------------------------------------------------------------------
+// Navigazione (menu topbar role-aware)
+// ----------------------------------------------------------------------
+test.describe('Navigazione (menu)', () => {
+
+  test('super_admin vede tutte le voci del nav su /customers', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    const nav = page.locator('nav.app-nav');
+    await expect(nav.locator('a.btn--ghost', { hasText: 'Clienti' })).toBeVisible();
+    await expect(nav.locator('a.btn--ghost', { hasText: 'Scan' })).toBeVisible();
+    await expect(nav.locator('a.btn--ghost', { hasText: 'Utenti' })).toBeVisible();
+    await expect(nav.locator('a.btn--ghost', { hasText: 'Stagione' })).toBeVisible();
+    await expect(nav.locator('a.btn--ghost', { hasText: 'Probe' })).toBeVisible();
+    await expect(nav.locator('a.btn--ghost', { hasText: 'Profilo' })).toBeVisible();
+  });
+
+  test('super_admin: voce attiva del nav ha classe btn--current', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    const clientiLink = page.locator('nav.app-nav a.btn--ghost', { hasText: 'Clienti' });
+    await expect(clientiLink).toHaveClass(/btn--current/);
+    // Altre voci non sono current
+    const scanLink = page.locator('nav.app-nav a.btn--ghost', { hasText: 'Scan' });
+    await expect(scanLink).not.toHaveClass(/btn--current/);
+  });
+
+  test('super_admin: link Probe del nav porta a /probe', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    await Promise.all([
+      page.waitForURL(/\/probe$/, { timeout: 10_000 }),
+      page.locator('nav.app-nav a.btn--ghost', { hasText: 'Probe' }).click(),
+    ]);
+    await expect(page).toHaveURL(/\/probe$/);
+  });
+
+  test('admin (non super_admin) NON vede Stagione e Probe nel nav', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const admin = await createTestAdmin(page);
+    try {
+      // logout super_admin via localStorage cleanup (stesso pattern degli altri test)
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await loginAsAdmin(page, admin.email, admin.password);
+      await page.goto('/customers');
+      const nav = page.locator('nav.app-nav');
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Clienti' })).toBeVisible();
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Utenti' })).toBeVisible();
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Stagione' })).toHaveCount(0);
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Probe' })).toHaveCount(0);
+    } finally {
+      // logout admin, riloggati come super_admin per il cleanup
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await loginAsSuperAdmin(page);
+        await softDeleteTestProfile(page, admin.id);
+      } catch (e) {
+        console.warn('[test cleanup] failed:', e);
+      }
+    }
+  });
+
+  test('mobile (<720px): burger visibile, tab inline nascoste; drawer espone le stesse voci', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    const nav = page.locator('nav.app-nav');
+    // I link inline esistono nel DOM ma il container e' display:none, quindi non sono visibili.
+    await expect(nav.locator('.nav-actions')).toBeHidden();
+    // Il burger e' visibile.
+    const burger = nav.locator('sl-icon-button.nav-burger');
+    await expect(burger).toBeVisible();
+    // Click apre il drawer. Lo show() di sl-drawer e' async, attendiamo open=true.
+    await burger.click();
+    const drawer = nav.locator('sl-drawer.nav-drawer');
+    await expect(drawer).toHaveAttribute('open', '', { timeout: 4_000 });
+    // Le stesse voci di super_admin compaiono come sl-menu-item.
+    for (const label of ['Clienti', 'Scan', 'Utenti', 'Stagione', 'Probe', 'Profilo']) {
+      await expect(drawer.locator('sl-menu-item', { hasText: label })).toBeVisible();
+    }
+    // Esci e' in coda.
+    await expect(drawer.locator('sl-menu-item', { hasText: 'Esci' })).toBeVisible();
+  });
+
+  test('mobile (<720px): tap su voce del drawer naviga alla pagina', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    const nav = page.locator('nav.app-nav');
+    await nav.locator('sl-icon-button.nav-burger').click();
+    const drawer = nav.locator('sl-drawer.nav-drawer');
+    await expect(drawer).toHaveAttribute('open', '', { timeout: 4_000 });
+    // Tap su "Profilo" dovrebbe portare a /me
+    await drawer.locator('sl-menu-item', { hasText: 'Profilo' }).click();
+    await page.waitForURL(/\/me$/, { timeout: 8_000 });
+    await expect(page).toHaveURL(/\/me$/);
+  });
+
+  test('desktop (>=720px): burger nascosto, tab inline visibili', async ({ page }) => {
+    // Esplicito anche se default viewport e' 1280x720: rende il contratto chiaro.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await loginAsSuperAdmin(page);
+    await page.goto('/customers');
+    const nav = page.locator('nav.app-nav');
+    await expect(nav.locator('.nav-actions')).toBeVisible();
+    await expect(nav.locator('sl-icon-button.nav-burger')).toBeHidden();
+  });
+
+  test('home post-login: super_admin -> /customers', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    await expect(page).toHaveURL(/\/customers$/);
+  });
+
+  test('home post-login: operator -> /scan', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await loginAsOperator(page, op.email, op.password);
+      await expect(page).toHaveURL(/\/scan$/);
+    } finally {
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await loginAsSuperAdmin(page);
+        await softDeleteTestOperator(page, op.id);
+      } catch (e) {
+        console.warn('[test cleanup] failed:', e);
+      }
+    }
+  });
+
+  test('home post-login: admin -> /customers', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const adm = await createTestAdmin(page);
+    try {
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await loginAsAdmin(page, adm.email, adm.password);
+      await expect(page).toHaveURL(/\/customers$/);
+    } finally {
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await loginAsSuperAdmin(page);
+        await softDeleteTestProfile(page, adm.id);
+      } catch (e) {
+        console.warn('[test cleanup] failed:', e);
+      }
+    }
+  });
+
+  test('operator NON vede Utenti, Stagione, Probe nel nav', async ({ page }) => {
+    await loginAsSuperAdmin(page);
+    const op = await createTestOperator(page);
+    try {
+      await page.evaluate(() => {
+        Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+      });
+      await loginAsOperator(page, op.email, op.password);
+      await page.goto('/customers');
+      const nav = page.locator('nav.app-nav');
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Clienti' })).toBeVisible();
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Scan' })).toBeVisible();
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Profilo' })).toBeVisible();
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Utenti' })).toHaveCount(0);
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Stagione' })).toHaveCount(0);
+      await expect(nav.locator('a.btn--ghost', { hasText: 'Probe' })).toHaveCount(0);
+    } finally {
+      try {
+        await page.evaluate(() => {
+          Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
+        });
+        await loginAsSuperAdmin(page);
+        await softDeleteTestOperator(page, op.id);
+      } catch (e) {
+        console.warn('[test cleanup] failed:', e);
+      }
+    }
   });
 
 });
@@ -189,12 +428,12 @@ test.describe('Anagrafica clienti', () => {
     }
   });
 
-  test('customer-detail super_admin: CTA Cancella visibile', async ({ page }) => {
+  test('customer-detail super_admin: CTA Archivia visibile', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
       await page.goto(`/customers/${customer.id}`);
-      const deleteBtn = page.locator('button.contrast', { hasText: 'Cancella cliente' });
+      const deleteBtn = page.locator('button.btn--danger', { hasText: 'Archivia cliente' });
       await expect(deleteBtn).toBeVisible({ timeout: 8_000 });
     } finally {
       await softDeleteTestCustomer(page, customer.id);
@@ -207,7 +446,8 @@ test.describe('Anagrafica clienti', () => {
     await expect(
       page.locator('article p', { hasText: 'Cliente non trovato' })
     ).toBeVisible();
-    await expect(page.locator('a[href="/customers"]')).toBeVisible();
+    // Link "Torna alla lista" nel main (nav role-aware ha anch'esso un link a /customers)
+    await expect(page.locator('main a[href="/customers"]')).toBeVisible();
   });
 
 });
@@ -224,7 +464,7 @@ test.describe('QR pubblico', () => {
     await expect(notFound).toBeVisible({ timeout: 8_000 });
   });
 
-  test('/qr/<token reale>: saluto IT + saldo 0,00 EUR (no charges)', async ({ page, browser }) => {
+  test('/qr/<token reale>: saluto IT + conto 0,00 EUR (no charges)', async ({ page, browser }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
@@ -244,11 +484,11 @@ test.describe('QR pubblico', () => {
     }
   });
 
-  test('/qr/<token>: saldo riflette charges aperte', async ({ page, browser }) => {
+  test('/qr/<token>: conto riflette charges aperte', async ({ page, browser }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
-      await chargeAmount(page, customer.id, '12', '34');
+      await insertChargeViaApi(page, customer.id, 12.34);
       const qrToken = await getCustomerQrToken(page, customer.id);
       const ctx = await browser.newContext();
       const anonPage = await ctx.newPage();
@@ -270,7 +510,7 @@ test.describe('QR pubblico', () => {
 // ----------------------------------------------------------------------
 test.describe('Operazioni POS', () => {
 
-  test('charge 5,50 -> saldo 5,50 EUR + badge aperto', async ({ page }) => {
+  test('charge 5,50 -> conto 5,50 EUR + badge aperto', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
@@ -282,12 +522,13 @@ test.describe('Operazioni POS', () => {
     }
   });
 
-  test('reversal: dialog Shoelace -> conferma -> saldo 0 + badge stornato', async ({ page }) => {
+  test('reversal: dialog Shoelace -> conferma -> conto 0 + badge annullato', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
-      await chargeAmount(page, customer.id, '7', '00');
-      await page.locator('.tx-storna-btn').first().click();
+      await insertChargeViaApi(page, customer.id, 7.00);
+      await page.goto(`/customers/${customer.id}`);
+      await page.locator('ul.transactions .btn--sm').first().click();
       const confirmBtn = page.locator('sl-dialog sl-button[variant=danger]').first();
       await Promise.all([
         page.waitForResponse((r) =>
@@ -296,22 +537,28 @@ test.describe('Operazioni POS', () => {
         confirmBtn.click(),
       ]);
       await expect(page.locator('.balance-card')).toContainText('0,00 EUR');
-      await expect(page.locator('ul.transactions .badge-storno').first()).toBeVisible();
+      await expect(page.locator('ul.transactions .badge-annullato').first()).toBeVisible();
+      // Riga unica: lo storno e' nascosto, la charge mostra sub-info "annullato il ..."
+      await expect(page.locator('ul.transactions .tx-sub-info').first()).toContainText('annullato il');
+      // Una sola <li> visibile (non 2: il reversal e' aggregato nella charge)
+      const txItems = page.locator('ul.transactions li.tx');
+      await expect(txItems).toHaveCount(1);
     } finally {
       await softDeleteTestCustomer(page, customer.id);
     }
   });
 
-  test('WhatsApp link saldo: href ben formato wa.me con saldo IT', async ({ page }) => {
+  test('WhatsApp link conto: href ben formato wa.me con conto IT', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
-      await chargeAmount(page, customer.id, '3', '20');
-      // chargeAmount aspetta che l'overlay si chiuda; il refresh del balance
-      // + del link WhatsApp e' async post-chiusura. Aspetto l'aggiornamento
+      await insertChargeViaApi(page, customer.id, 3.20);
+      await page.goto(`/customers/${customer.id}`);
+      // refresh del balance + del link WhatsApp e' async dopo customer load.
+      // Aspetto l'aggiornamento
       // esplicito del balance-card prima di leggere href.
       await expect(page.locator('.balance-card')).toContainText('3,20 EUR');
-      const link = page.locator('a[href^="https://wa.me/"][role=button]').last();
+      const link = page.locator('a[href^="https://wa.me/"]').last();
       await expect(link).toBeVisible();
       const href = await link.getAttribute('href');
       expect(href).toMatch(/^https:\/\/wa\.me\/\d{11,}\?text=.+/);
@@ -337,7 +584,7 @@ test.describe('Scan QR', () => {
     const alert = page.locator('article[role=alert] p').first();
     await expect(alert).toBeVisible({ timeout: 15_000 });
     await expect(alert).toContainText(/camera|qr/i);
-    await expect(page.locator('a[href="/customers"][role=button]')).toBeVisible();
+    await expect(page.locator('a.btn--outline[href="/customers"]')).toBeVisible();
   });
 
 });
@@ -351,10 +598,11 @@ test.describe('Chiusura conto', () => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
-      await chargeAmount(page, customer.id, '5', '50');
+      await insertChargeViaApi(page, customer.id, 5.50);
 
       await page.goto(`/checkout/${customer.id}`);
-      await expect(page.locator('h2'))
+      // 'main h2' per evitare match con <h2 part="title"> dello shadow DOM di sl-drawer.
+      await expect(page.locator('main h2'))
         .toHaveText(`${customer.lastName} ${customer.firstName}`);
       await expect(page.locator('.balance-card')).toContainText('5,50 EUR');
 
@@ -373,15 +621,15 @@ test.describe('Chiusura conto', () => {
 
       // Sub-text "saldato il ... via Contanti" visibile (super_admin -> nome leggibile).
       const txList = page.locator('ul.transactions');
-      await expect(txList.locator('.tx-paid-info').first()).toContainText('saldato il');
-      await expect(txList.locator('.tx-paid-info').first()).toContainText('via Contanti');
+      await expect(txList.locator('.tx-sub-info').first()).toContainText('saldato il');
+      await expect(txList.locator('.tx-sub-info').first()).toContainText('via Contanti');
       await expect(txList.locator('.badge-saldato').first()).toBeVisible();
     } finally {
       await softDeleteTestCustomer(page, customer.id);
     }
   });
 
-  test('saldo=0 -> dropdown nascosto, CTA disabilitato', async ({ page }) => {
+  test('conto=0 -> dropdown nascosto, CTA disabilitato', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const customer = await createTestCustomer(page);
     try {
@@ -390,7 +638,7 @@ test.describe('Chiusura conto', () => {
 
       const cta = page.locator('button.submit-cta');
       await expect(cta).toBeDisabled();
-      await expect(cta).toHaveText('Nessun importo da saldare');
+      await expect(cta).toHaveText('Nessun importo da pagare');
       await expect(page.locator('.method-row')).toBeHidden();
     } finally {
       await softDeleteTestCustomer(page, customer.id);
@@ -498,10 +746,10 @@ test.describe('Gestione utenti', () => {
         await opPage.locator('input[type=password]').fill(op.password);
         await opPage.locator('button[type=submit]').click();
         await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
-        // login con nuova password -> OK redirect /customers
+        // login con nuova password -> OK redirect home operator (/scan)
         await opPage.locator('input[type=password]').fill(newPwd);
         await opPage.locator('button[type=submit]').click();
-        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        await opPage.waitForURL(/\/scan$/, { timeout: 15_000 });
       } finally { await ctx.close(); }
     } finally {
       await softDeleteTestOperator(page, op.id);
@@ -514,7 +762,7 @@ test.describe('Gestione utenti', () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test('operator su /admin/users -> redirect /customers', async ({ page }) => {
+  test('operator su /admin/users -> redirect /scan (home operator)', async ({ page }) => {
     await loginAsSuperAdmin(page);
     const op = await createTestOperator(page);
     try {
@@ -528,10 +776,10 @@ test.describe('Gestione utenti', () => {
       await expect(page.locator('input[type=email]')).toBeVisible({ timeout: 8_000 });
       // login operator
       await loginAsOperator(page, op.email, op.password);
-      // visita /admin/users -> guard redirecta a /customers (operator non ha accesso)
+      // visita /admin/users -> guard redirecta alla home del ruolo (/scan per operator)
       await page.goto('/admin/users');
-      await page.waitForURL(/\/customers$/, { timeout: 15_000 });
-      await expect(page).toHaveURL(/\/customers$/);
+      await page.waitForURL(/\/scan$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/scan$/);
     } finally {
       // logout operator: stessa pulizia, poi login come super_admin
       try {
@@ -554,7 +802,7 @@ test.describe('Gestione utenti', () => {
     // aspetta che Alpine rimuova x-cloak dal body (guard ok -> removeAttribute)
     await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
     await expect(page.locator('h1')).toHaveText('Gestione utenti', { timeout: 5_000 });
-    await expect(page.locator('a[href="/customers"]')).toBeVisible();
+    await expect(page.locator('main a[href="/customers"]')).toBeVisible();
   });
 
   test('edit operator via dialog -> nuovo nome in lista', async ({ page }) => {
@@ -604,7 +852,7 @@ test.describe('Gestione utenti', () => {
         await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
         await opPage.locator('input[type=password]').fill(newPwd);
         await opPage.locator('button[type=submit]').click();
-        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        await opPage.waitForURL(/\/scan$/, { timeout: 15_000 });
       } finally { await ctx.close(); }
     } finally {
       await softDeleteTestOperator(page, op.id);
@@ -618,7 +866,7 @@ test.describe('Gestione utenti', () => {
       await page.goto('/admin/users');
       const row = page.locator('table tbody tr', { hasText: op.lastName });
       await expect(row).toBeVisible({ timeout: 8_000 });
-      await row.locator('button.contrast', { hasText: 'Cancella' }).click();
+      await row.locator('button.btn--danger', { hasText: 'Cancella' }).click();
       const dialog = page.locator('sl-dialog[label="Conferma cancellazione"]');
       await expect(dialog).toBeVisible();
       await dialog.locator('sl-button[variant="danger"]').click();
@@ -632,9 +880,9 @@ test.describe('Gestione utenti', () => {
         await opPage.locator('input[type=email]').fill(op.email);
         await opPage.locator('input[type=password]').fill(op.password);
         await opPage.locator('button[type=submit]').click();
-        // signInWithPassword riesce comunque; la pagina atterrara' su /customers.
+        // signInWithPassword riesce comunque; la pagina atterrara' sulla home del ruolo (/scan per operator).
         // Aspetta che il redirect si completi e auth.js abbia la sessione caricata.
-        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        await opPage.waitForURL(/\/scan$/, { timeout: 15_000 });
         const ping = await opPage.evaluate(async () => {
           return await window.Auth.callAuthPing({ stamp: false });
         });
@@ -655,7 +903,7 @@ test.describe('Gestione utenti', () => {
     const email = `e2e-op-dlg-${ts}@example.com`;
     let createdId: string | null = null;
     try {
-      await page.locator('button.primary', { hasText: '+ Nuovo operator' }).click();
+      await page.locator('button.btn--primary', { hasText: '+ Nuovo operator' }).click();
       const dialog = page.locator('sl-dialog[label="Nuovo operator"]');
       await expect(dialog).toBeVisible({ timeout: 5_000 });
       await dialog.locator('input[type="email"]').fill(email);
@@ -684,7 +932,7 @@ test.describe('Gestione utenti', () => {
     const email = `e2e-adm-dlg-${ts}@example.com`;
     let createdId: string | null = null;
     try {
-      await page.locator('button.primary', { hasText: '+ Nuovo admin' }).click();
+      await page.locator('button.btn--primary', { hasText: '+ Nuovo admin' }).click();
       const dialog = page.locator('sl-dialog[label="Nuovo admin"]');
       await expect(dialog).toBeVisible({ timeout: 5_000 });
       await dialog.locator('input[type="email"]').fill(email);
@@ -719,7 +967,7 @@ test.describe('Gestione utenti', () => {
       await page.goto('/admin/users');
       await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
       // bottone "+ Nuovo admin" presente in DOM ma nascosto via x-show (super_admin only)
-      await expect(page.locator('button.primary', { hasText: '+ Nuovo admin' })).toBeHidden();
+      await expect(page.locator('button.btn--primary', { hasText: '+ Nuovo admin' })).toBeHidden();
       // checkbox 'Mostra cancellati' presente in DOM ma nascosto via x-show (super_admin only)
       await expect(page.locator('label', { hasText: 'Mostra cancellati' })).toBeHidden();
       // 'Cambia ruolo' non presente in nessuna riga (operator-only list, no row eligible)
@@ -916,7 +1164,7 @@ test.describe('Profilo proprio', () => {
     await expect(dl).toContainText('super_admin');
     await expect(dl).toContainText(process.env.TEST_SUPER_ADMIN_EMAIL!);
     // bottone Cambia password
-    await expect(page.locator('button.primary', { hasText: 'Cambia password' })).toBeVisible();
+    await expect(page.locator('button.btn--primary', { hasText: 'Cambia password' })).toBeVisible();
     // nessun input editabile (no input text required visibili)
     await expect(page.locator('main input[type=text][required]')).toHaveCount(0);
   });
@@ -925,7 +1173,7 @@ test.describe('Profilo proprio', () => {
     await loginAsSuperAdmin(page);
     await page.goto('/me');
     await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
-    await page.locator('button.primary', { hasText: 'Cambia password' }).click();
+    await page.locator('button.btn--primary', { hasText: 'Cambia password' }).click();
     const dialog = page.locator('sl-dialog[label="Cambia password"]');
     await expect(dialog).toBeVisible();
     const inputs = dialog.locator('input[type=password]');
@@ -963,7 +1211,7 @@ test.describe('Profilo proprio', () => {
       await page.goto('/me');
       await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
       // dialog cambio password
-      await page.locator('button.primary', { hasText: 'Cambia password' }).click();
+      await page.locator('button.btn--primary', { hasText: 'Cambia password' }).click();
       const dialog = page.locator('sl-dialog[label="Cambia password"]');
       await expect(dialog).toBeVisible();
       const newPwd = 'NewOpPwd' + Date.now();
@@ -985,7 +1233,7 @@ test.describe('Profilo proprio', () => {
         await expect(opPage.locator('article[role=alert] p')).toBeVisible({ timeout: 10_000 });
         await opPage.locator('input[type=password]').fill(newPwd);
         await opPage.locator('button[type=submit]').click();
-        await opPage.waitForURL(/\/customers$/, { timeout: 15_000 });
+        await opPage.waitForURL(/\/scan$/, { timeout: 15_000 });
       } finally { await ctx.close(); }
     } finally {
       // re-login super_admin per cleanup
@@ -1021,7 +1269,7 @@ test.describe('Fine stagione (M8 Sub-A)', () => {
     await expect(page.locator('input[type=email]')).toBeVisible({ timeout: 8_000 });
   }
 
-  test('/admin/season da operator -> redirect /customers', async ({ page }) => {
+  test('/admin/season da operator -> redirect /scan (home operator)', async ({ page }) => {
     // Crea operator come super_admin, poi esegue il test con l'account operator.
     await loginAsSuperAdmin(page);
     const op = await createTestOperator(page);
@@ -1029,8 +1277,8 @@ test.describe('Fine stagione (M8 Sub-A)', () => {
       await logoutViaStorage(page);
       await loginAsOperator(page, op.email, op.password);
       await page.goto('/admin/season');
-      await page.waitForURL(/\/customers$/, { timeout: 15_000 });
-      await expect(page).toHaveURL(/\/customers$/);
+      await page.waitForURL(/\/scan$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/scan$/);
     } finally {
       // Cleanup: re-login super_admin e soft-delete.
       try { await logoutViaStorage(page); } catch (_e) { /* ignore */ }
@@ -1145,7 +1393,7 @@ test.describe('Fine stagione (M8 Sub-A)', () => {
     // Pre-fixture: almeno 1 customer + 1 transaction su DEV. Le helper hanno gia'
     // waitForURL/waitForResponse sui POST -> non serve un check supplementare via probe.
     const c1 = await createTestCustomer(page);
-    await chargeAmount(page, c1.id, '5', '50');
+    await insertChargeViaApi(page, c1.id, 5.50);
     // Naviga alla pagina fine stagione.
     await page.goto('/admin/season');
     await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });

@@ -7,7 +7,6 @@ set -euo pipefail
 
 VENDOR_ROOT="public/vendor"
 
-PICO_VERSION="2.1.1"
 ALPINE_VERSION="3.15.12"
 SUPABASE_VERSION="2.105.3"
 HTML5QR_VERSION="2.3.8"
@@ -31,27 +30,22 @@ download_file() {
   echo "[ok]   $dest"
 }
 
-# 1. Pico CSS
-download_file \
-  "${JSDELIVR}/@picocss/pico@${PICO_VERSION}/css/pico.min.css" \
-  "${VENDOR_ROOT}/pico/${PICO_VERSION}/pico.min.css"
-
-# 2. Alpine.js
+# 1. Alpine.js
 download_file \
   "${JSDELIVR}/alpinejs@${ALPINE_VERSION}/dist/cdn.min.js" \
   "${VENDOR_ROOT}/alpinejs/${ALPINE_VERSION}/alpine.min.js"
 
-# 3. Supabase JS (UMD bundle browser)
+# 2. Supabase JS (UMD bundle browser)
 download_file \
   "${JSDELIVR}/@supabase/supabase-js@${SUPABASE_VERSION}/dist/umd/supabase.js" \
   "${VENDOR_ROOT}/supabase/${SUPABASE_VERSION}/supabase.js"
 
-# 4. html5-qrcode
+# 3. html5-qrcode
 download_file \
   "${JSDELIVR}/html5-qrcode@${HTML5QR_VERSION}/html5-qrcode.min.js" \
   "${VENDOR_ROOT}/html5-qrcode/${HTML5QR_VERSION}/html5-qrcode.min.js"
 
-# 5. qrcode (ESM bundle, jsdelivr +esm). Il package upstream non
+# 4. qrcode (ESM bundle, jsdelivr +esm). Il package upstream non
 # pubblica un UMD browser standalone: lib/browser.js e' un wrapper
 # che richiede un bundler. Il bundle ESM auto-generato da jsdelivr
 # (rollup+terser) e' pronto per <script type="module">.
@@ -72,7 +66,7 @@ if grep -q '/npm/dijkstrajs@' "$QRCODE_BUNDLE"; then
   echo "[ok]   patched qrcode bundle import dijkstrajs -> /vendor/qrcode/${QRCODE_VERSION}/dijkstrajs.js"
 fi
 
-# 6. Shoelace -- intera cartella cdn/ via tarball npm registry (no npm CLI)
+# 5. Shoelace -- intera cartella cdn/ via tarball npm registry (no npm CLI)
 SL_DEST="${VENDOR_ROOT}/shoelace/${SHOELACE_VERSION}"
 if [[ -d "$SL_DEST" && -f "${SL_DEST}/shoelace-autoloader.js" ]]; then
   echo "[skip] $SL_DEST gia presente"

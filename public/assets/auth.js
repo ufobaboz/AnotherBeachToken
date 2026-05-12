@@ -8,8 +8,10 @@
 // - Auth.signIn(email, password) -> { ok, error? }
 // - Auth.signOut(): redirect /login
 // - Auth.requireAuth(): redirect /login se anon, ritorna sessione altrimenti
-// - Auth.redirectIfAuthenticated(): redirect /customers se gia' loggato
-// - Auth.requireSuperAdmin(): redirect /customers se role != super_admin
+// - Auth.redirectIfAuthenticated(): redirect alla home del ruolo se gia' loggato
+// - Auth.requireSuperAdmin(): redirect alla home del ruolo se role != super_admin
+// - Auth.requireAdmin(): redirect alla home del ruolo se role != admin/super_admin
+// - Auth.homeForRole(role): '/scan' per operator, '/customers' altrimenti
 // - Auth.callAuthPing({stamp}): chiama edge function auth-ping
 // - Auth.getRole(): ritorna il role corrente (cached), null se anon o errore
 (function () {
@@ -33,6 +35,11 @@
   });
 
   var cachedRole = null;
+
+  function homeForRole(role) {
+    if (role === 'operator') return '/scan';
+    return '/customers';
+  }
 
   function mapSignInError(err) {
     if (!err) return 'unknown';
@@ -59,7 +66,8 @@
   async function redirectIfAuthenticated() {
     var session = await getSession();
     if (session) {
-      window.location.replace('/customers');
+      var role = await getRole();
+      window.location.replace(homeForRole(role));
     }
   }
 
@@ -73,7 +81,8 @@
       return null;
     }
     if (!resp.data || resp.data.role !== 'super_admin') {
-      window.location.replace('/customers');
+      var role = resp.data ? resp.data.role : null;
+      window.location.replace(homeForRole(role));
       return null;
     }
     cachedRole = resp.data.role;
@@ -85,7 +94,7 @@
     if (!session) return null;
     var role = await getRole();
     if (role !== 'admin' && role !== 'super_admin') {
-      window.location.replace('/customers');
+      window.location.replace(homeForRole(role));
       return null;
     }
     return session;
@@ -179,6 +188,7 @@
     requireSuperAdmin: requireSuperAdmin,
     requireAdmin: requireAdmin,
     requireAdminOrAbove: requireAdmin,
+    homeForRole: homeForRole,
     getRole: getRole,
     callAuthPing: callAuthPing,
     callEdgeFunction: callEdgeFunction
