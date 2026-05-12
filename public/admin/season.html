@@ -1,45 +1,50 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" class="sl-theme-light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#145d2f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ABT">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <script src="/assets/pwa.js" defer></script>
   <title>Fine stagione -- Customer QR Tracker</title>
-  <link rel="stylesheet" href="/vendor/pico/2.1.1/pico.min.css">
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
   <script src="/assets/config.js"></script>
   <script src="/assets/strings.js"></script>
   <script src="/assets/auth.js"></script>
+  <script src="/assets/nav.js"></script>
   <script src="/assets/csv.js"></script>
   <script type="module" src="/vendor/shoelace/2.20.1/components/dialog/dialog.js"></script>
   <script type="module" src="/vendor/shoelace/2.20.1/components/button/button.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
-    section.archive, section.reset { margin-top: 1.5rem; padding: 1rem; border-radius: 0.3rem; }
-    section.archive { background: var(--pico-card-background-color); }
-    section.reset { background: #2a1414; border: 1px solid #8a1f1f; }
-    section.reset h2 { color: #f08080; }
+    section.archive, section.reset { margin-top: 1.5rem; padding: 1rem; border-radius: var(--sl-border-radius-medium); }
+    section.archive { background: var(--sl-color-neutral-50); }
+    section.reset { background: var(--sl-color-danger-50); border: 1px solid var(--sl-color-danger-300); }
+    section.reset h2 { color: var(--sl-color-danger-700); }
     .download-row { display: flex; flex-direction: column; gap: 0.5rem; max-width: 320px; }
-    .download-row button { margin: 0; }
-    .download-row small { color: var(--pico-muted-color); }
-    article[role="status"] { padding: 0.6rem 0.9rem; margin-bottom: 1rem; background: #1c5d31; color: #fff; border-radius: 0.3rem; }
-    article.error { background: #8a1f1f; color: #fff; }
+    .download-row small { color: var(--sl-color-neutral-500); }
+    article[role="status"] { padding: 0.6rem 0.9rem; margin-bottom: 1rem; background: var(--sl-color-success-600); color: var(--sl-color-neutral-0); border-radius: var(--sl-border-radius-medium); }
+    article.error { background: var(--sl-color-danger-600); color: var(--sl-color-neutral-0); }
     sl-dialog form label { display: block; margin-bottom: 0.5rem; }
     sl-dialog input.confirm-input { font-family: monospace; font-size: 1.05rem; width: 100%; }
   </style>
 </head>
 <body x-cloak x-data="adminSeasonPage" x-init="init()">
-  <nav class="app-nav">
+  <nav class="app-nav" x-data="appNav" x-init="init()">
     <h1 x-text="t.adminSeason.title"></h1>
     <div class="nav-actions">
-      <a href="/admin/users" x-text="t.nav.users"></a>
-      <a href="/me" x-text="t.nav.profile"></a>
-      <a target="_blank" rel="noopener noreferrer"
-         href="https://dash.cloudflare.com/9aea46551a6124e9e4d0233168e81f47/r2/default/buckets/anotherbeach-backups"
-         x-text="t.nav.backupR2"></a>
-      <button class="secondary" @click="logout()" x-text="t.logout"></button>
+      <template x-for="item in items" :key="item.path">
+        <a class="btn btn--ghost" :class="item.isCurrent ? 'btn--current' : ''"
+           :href="item.path" x-text="item.label"></a>
+      </template>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
     </div>
   </nav>
 
@@ -54,13 +59,13 @@
     <section class="archive">
       <h2 x-text="t.adminSeason.archiveTitle"></h2>
       <div class="download-row">
-        <button class="primary" :disabled="downloading.customers"
+        <button class="btn btn--primary" :disabled="downloading.customers"
                 @click="downloadTable('customers')"
                 x-text="downloading.customers ? t.adminSeason.downloadingCustomers : t.adminSeason.downloadCustomers"></button>
-        <button class="primary" :disabled="downloading.transactions"
+        <button class="btn btn--primary" :disabled="downloading.transactions"
                 @click="downloadTable('transactions')"
                 x-text="downloading.transactions ? t.adminSeason.downloadingTransactions : t.adminSeason.downloadTransactions"></button>
-        <button class="primary" :disabled="downloading.profiles"
+        <button class="btn btn--primary" :disabled="downloading.profiles"
                 @click="downloadTable('profiles')"
                 x-text="downloading.profiles ? t.adminSeason.downloadingProfiles : t.adminSeason.downloadProfiles"></button>
         <small x-text="t.adminSeason.archiveHint"></small>
@@ -70,7 +75,7 @@
     <section class="reset">
       <h2 x-text="t.adminSeason.resetTitle"></h2>
       <p x-text="t.adminSeason.resetIntro"></p>
-      <button class="contrast" @click="openResetDialog()" x-text="t.adminSeason.resetButton"></button>
+      <button class="btn btn--danger" @click="openResetDialog()" x-text="t.adminSeason.resetButton"></button>
     </section>
 
     <sl-dialog x-ref="resetDialog" :label="t.adminSeason.resetDialogTitle">

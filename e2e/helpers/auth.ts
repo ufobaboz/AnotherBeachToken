@@ -21,10 +21,10 @@ export async function loginAsOperator(page: Page, email: string, password: strin
   await page.locator('input[type=email]').fill(email);
   await page.locator('input[type=password]').fill(password);
   await Promise.all([
-    page.waitForURL(/\/customers$/, { timeout: 15_000 }),
+    page.waitForURL(/\/scan$/, { timeout: 15_000 }),
     page.locator('button[type=submit]').click()
   ]);
-  await expect(page).toHaveURL(/\/customers$/);
+  await expect(page).toHaveURL(/\/scan$/);
 }
 
 export async function loginAsAdmin(page: Page, email: string, password: string): Promise<void> {
