@@ -1,19 +1,3 @@
-// repo/public/assets/auth.js
-// Modulo IIFE che monta window.Auth. Dipende da window.supabase (libreria
-// self-hosted in /vendor/supabase/.../supabase.js) e window.APP_CONFIG
-// (generato da build.sh con SUPABASE_URL e SUPABASE_ANON_KEY).
-//
-// Espone:
-// - Auth.client: client Supabase singleton
-// - Auth.signIn(email, password) -> { ok, error? }
-// - Auth.signOut(): redirect /login
-// - Auth.requireAuth(): redirect /login se anon, ritorna sessione altrimenti
-// - Auth.redirectIfAuthenticated(): redirect alla home del ruolo se gia' loggato
-// - Auth.requireSuperAdmin(): redirect alla home del ruolo se role != super_admin
-// - Auth.requireAdmin(): redirect alla home del ruolo se role != admin/super_admin
-// - Auth.homeForRole(role): '/scan' per operator, '/customers' altrimenti
-// - Auth.callAuthPing({stamp}): chiama edge function auth-ping
-// - Auth.getRole(): ritorna il role corrente (cached), null se anon o errore
 (function () {
   if (!window.APP_CONFIG || !window.APP_CONFIG.SUPABASE_URL || !window.APP_CONFIG.SUPABASE_ANON_KEY) {
     console.error('[auth] APP_CONFIG mancante: build.sh non ha iniettato le env vars.');
@@ -159,7 +143,6 @@
       if (resp.error) {
         return { ok: false, error: mapSignInError(resp.error) };
       }
-      // fire-and-forget: lo stamping di last_login_at non blocca il login
       callAuthPing({ stamp: true }).catch(function (e) {
         console.warn('[auth] auth-ping stamp failed (non-fatal):', e);
       });

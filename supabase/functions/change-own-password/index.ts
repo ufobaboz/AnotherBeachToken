@@ -1,7 +1,7 @@
-// repo/supabase/functions/change-own-password/index.ts
-// Cambio password proprio, qualsiasi authenticated attivo.
-// Body: { old_password, new_password }. Re-auth via signInWithPassword
-// (anti shoulder-surf), poi auth.admin.updateUserById.
+// Re-auth con anonClient (NON serviceClient): la service_role bypassa i
+// rate-limit Auth, esponendo al brute force della old_password con JWT valido.
+// Inoltre signInWithPassword muta lo stato auth del client, sub-ottimale su un
+// singleton privilegiato condiviso fra richieste.
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -13,16 +13,21 @@ const CORS_HEADERS: Record<string, string> = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const ANON_KEY     = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
-if (!SUPABASE_URL || !SERVICE_ROLE) {
+if (!SUPABASE_URL || !SERVICE_ROLE || !ANON_KEY) {
   console.error(JSON.stringify({
     event: 'change-own-password',
     error: 'missing_env',
-    message: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set'
+    message: 'SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY o SUPABASE_ANON_KEY non impostata'
   }));
 }
 
 const serviceClient: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
+  auth: { persistSession: false, autoRefreshToken: false }
+});
+
+const anonClient: SupabaseClient = createClient(SUPABASE_URL, ANON_KEY, {
   auth: { persistSession: false, autoRefreshToken: false }
 });
 
@@ -107,8 +112,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse(errorBody('bad_request', 'new_password obbligatoria, fra 8 e 200 char.'), 400);
   }
 
-  // Re-auth con vecchia password (anti shoulder-surf).
-  const reauthResp = await serviceClient.auth.signInWithPassword({
+  const reauthResp = await anonClient.auth.signInWithPassword({
     email: caller.email,
     password: oldPassword
   });
@@ -117,7 +121,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse(errorBody('invalid_old_password', 'Vecchia password sbagliata.'), 401);
   }
 
-  // Update password.
   const updResp = await serviceClient.auth.admin.updateUserById(caller.userId, { password: newPassword });
   if (updResp.error) {
     const msg = (updResp.error.message || '').toLowerCase();

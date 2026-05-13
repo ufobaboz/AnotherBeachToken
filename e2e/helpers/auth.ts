@@ -28,8 +28,6 @@ export async function loginAsOperator(page: Page, email: string, password: strin
 }
 
 export async function loginAsAdmin(page: Page, email: string, password: string): Promise<void> {
-  // Stesso flow di loginAsOperator: signInWithPassword e' identico per qualsiasi ruolo.
-  // Helper separato per leggibilita' nei test.
   await page.goto('/login');
   await page.locator('input[type=email]').fill(email);
   await page.locator('input[type=password]').fill(password);

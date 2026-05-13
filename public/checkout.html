@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#145d2f">
+  <meta name="theme-color" content="#1f8a3e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ABT">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <script src="/assets/pwa.js" defer></script>
-  <title>Chiusura conto -- Customer QR Tracker</title>
+  <title>Chiusura conto -- AnotherBeachToken</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -20,47 +20,21 @@
   <script src="/assets/nav.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
-    [x-cloak] { display: none !important; }
-    .balance-card {
-      padding: 0.75rem 1rem;
-      background: var(--sl-color-neutral-50);
-      border-radius: var(--sl-border-radius-medium);
-      margin: 0.5rem 0 1rem 0;
-      font-size: 1.15rem;
-    }
-    ul.transactions { list-style: none; padding: 0; margin: 0 0 1rem 0; }
-    li.tx {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      grid-template-rows: auto auto;
-      gap: 0.25rem 0.75rem;
-      padding: 0.5rem 0.4rem;
-      border-bottom: 1px solid var(--sl-color-neutral-200);
-    }
-    li.tx-annulled .tx-desc { opacity: 0.7; }
-    .tx-time { font-size: 0.85rem; color: var(--sl-color-neutral-500); }
-    .tx-sub-info { grid-column: 2 / -1; font-size: 0.85rem; color: var(--sl-color-neutral-500); }
-    .badge {
-      display: inline-block;
-      padding: 0.1rem 0.5rem;
-      border-radius: var(--sl-border-radius-small);
-      font-family: monospace;
-      font-size: 0.75rem;
-    }
-    .badge-aperto    { background: var(--sl-color-warning-600); color: var(--sl-color-neutral-0); }
-    .badge-annullato { background: var(--sl-color-neutral-600); color: var(--sl-color-neutral-0); }
-    .method-row { margin-bottom: 1rem; }
     .method-row select { width: 100%; }
-    .submit-cta { width: 100%; font-size: 1.1rem; height: auto; padding: 0.9rem; }
-    .submit-error { color: var(--sl-color-danger-700); margin-top: 0.5rem; text-align: center; }
+    .method-row { margin-bottom: var(--space-4); }
+    .checkout-actions { display: flex; flex-direction: column; gap: var(--space-2); }
+    .submit-error { text-align: center; }
+    /* Alert race-condition fine chiusura: warning con CTA ricarica */
     .race-alert {
-      padding: 0.75rem 1rem;
-      background: var(--sl-color-warning-50);
-      border: 1px solid var(--sl-color-warning-300);
-      border-radius: var(--sl-border-radius-medium);
-      margin-top: 1rem;
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-warning-soft);
+      border: 1px solid rgba(176,122,26,.45);
+      color: var(--color-warning-ink);
+      border-radius: var(--radius-md);
+      margin-top: var(--space-4);
     }
-    .race-alert .btn { margin-top: 0.5rem; }
+    .race-alert p { margin: 0 0 var(--space-2); }
+    .race-alert .btn { margin-top: var(--space-2); }
   </style>
 </head>
 <body x-cloak x-data="checkoutPage" x-init="init()">
@@ -103,7 +77,7 @@
         </ul>
 
         <div class="balance-card">
-          <strong x-text="t.checkout.balanceLabel"></strong>:
+          <strong x-text="t.checkout.balanceLabel"></strong>
           <span x-text="formatBalance(openBalance) + ' EUR'"></span>
         </div>
 
@@ -118,11 +92,22 @@
           </label>
         </div>
 
-        <button class="btn btn--primary submit-cta"
-                x-show="!postUpdateAlert"
-                :disabled="!canSubmit()"
-                @click="submit()"
-                x-text="submitButtonLabel()"></button>
+        <div class="checkout-actions" x-show="!postUpdateAlert" x-cloak>
+          <button class="btn btn--primary btn--cta"
+                  x-show="openBalance > 0"
+                  :disabled="!canSubmit()"
+                  @click="submitAndArchive()"
+                  x-text="submittingArchive ? t.checkout.submittingArchive : t.checkout.confirmAndArchiveCta"></button>
+          <button class="btn btn--outline btn--cta"
+                  x-show="openBalance > 0"
+                  :disabled="!canSubmit()"
+                  @click="submit()"
+                  x-text="(submitting && !submittingArchive) ? t.checkout.submitting : t.checkout.confirmPartialCta"></button>
+          <button class="btn btn--primary btn--cta"
+                  x-show="openBalance <= 0"
+                  disabled
+                  x-text="t.checkout.emptyBalanceCta"></button>
+        </div>
 
         <div x-show="error" x-cloak class="submit-error" role="alert" x-text="error"></div>
 
@@ -149,6 +134,7 @@
           openBalance: 0,
           method: 'cash',
           submitting: false,
+          submittingArchive: false,
           error: null,
           postUpdateAlert: null,
           session: null,
@@ -190,9 +176,8 @@
             }
             this.transactions = resp.data || [];
             this.transactionIds = this.transactions.map(function (tx) { return tx.id; });
-            // Indici per rendering "riga unica" charge+reversal.
-            // L'UPDATE batch usa transactionIds (intero set, charges e reversals).
-            // Il rendering usa displayTransactions (solo charges + reversal orfani).
+            // L'UPDATE batch usa transactionIds (charges + reversals); il
+            // rendering usa displayTransactions (charges + reversal orfani).
             this.reversedIds = new Set();
             this.reversalByCharge = {};
             var chargeIds = new Set();
@@ -268,17 +253,18 @@
           canSubmit() {
             return !this.submitting && this.openBalance > 0 && !!this.method && !this.postUpdateAlert;
           },
-          submitButtonLabel() {
-            if (this.submitting) return this.t.checkout.submitting;
-            if (this.openBalance <= 0) return this.t.checkout.emptyBalanceCta;
-            var methodLabel = this.t.paymentMethods[this.method] || this.method;
-            return this.t.checkout.confirmCta(this.formatBalance(this.openBalance), methodLabel);
-          },
-          async submit() {
+          async submit() { await this._doSubmit(false); },
+          async submitAndArchive() { await this._doSubmit(true); },
+          async _doSubmit(archive) {
             if (!this.canSubmit()) return;
             this.submitting = true;
+            if (archive) this.submittingArchive = true;
             this.error = null;
             var nowIso = new Date().toISOString();
+            // .eq('customer_id') + .in('id'): defense in depth lato server.
+            // RLS transactions_update_close valida riga-per-riga ma NON vincola
+            // customer_id; questa eq impedisce update cross-customer se
+            // transactionIds fosse manomesso.
             var resp = await window.Auth.client.from('transactions')
               .update({
                 paid: true,
@@ -286,12 +272,14 @@
                 payment_method: this.method,
                 paid_by_id: this.session.user.id
               })
+              .eq('customer_id', this.customer.id)
               .in('id', this.transactionIds)
               .select('id');
             if (resp.error) {
               console.error('[checkout] update error', resp.error);
               this.error = this.t.checkout.error;
               this.submitting = false;
+              this.submittingArchive = false;
               return;
             }
             var updatedCount = (resp.data || []).length;
@@ -299,6 +287,7 @@
               console.warn('[checkout] partial update', { expected: this.transactionIds.length, got: updatedCount });
               this.error = this.t.checkout.partial;
               this.submitting = false;
+              this.submittingArchive = false;
               return;
             }
             var postCount = await window.Auth.client.from('transactions')
@@ -306,17 +295,35 @@
               .eq('customer_id', this.customer.id)
               .eq('paid', false)
               .is('deleted_at', null);
-            this.submitting = false;
             if (postCount.error) {
               console.warn('[checkout] post-count error', postCount.error);
+              this.submitting = false;
+              this.submittingArchive = false;
               window.location.replace('/customers/' + this.customer.id);
               return;
             }
-            if ((postCount.count || 0) === 0) {
-              window.location.replace('/customers/' + this.customer.id);
+            if ((postCount.count || 0) > 0) {
+              this.submitting = false;
+              this.submittingArchive = false;
+              this.postUpdateAlert = { newCount: postCount.count };
               return;
             }
-            this.postUpdateAlert = { newCount: postCount.count };
+            if (archive) {
+              var delResp = await window.Auth.client.from('customers')
+                .update({ deleted_at: new Date().toISOString() })
+                .eq('id', this.customer.id);
+              this.submitting = false;
+              this.submittingArchive = false;
+              if (delResp.error) {
+                console.error('[checkout] archive customer error', delResp.error);
+                this.error = this.t.checkout.archiveError;
+                return;
+              }
+              window.location.replace('/customers');
+              return;
+            }
+            this.submitting = false;
+            window.location.replace('/customers/' + this.customer.id);
           },
           reloadPage() {
             window.location.reload();

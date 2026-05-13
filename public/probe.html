@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#145d2f">
+  <meta name="theme-color" content="#1f8a3e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ABT">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <script src="/assets/pwa.js" defer></script>
-  <title>Probe -- Customer QR Tracker</title>
+  <title>Probe -- AnotherBeachToken</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -20,14 +20,15 @@
   <script src="/assets/nav.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
-    [x-cloak] { display: none !important; }
-    .check { margin-bottom: 0.75rem; }
-    .badge { display: inline-block; min-width: 3rem; text-align: center; padding: 0.1rem 0.5rem; border-radius: var(--sl-border-radius-small); font-family: monospace; font-size: 0.85rem; margin-right: 0.5rem; }
-    .badge-ok      { background: var(--sl-color-success-600); color: var(--sl-color-neutral-0); }
-    .badge-fail    { background: var(--sl-color-danger-600); color: var(--sl-color-neutral-0); }
-    .badge-na      { background: var(--sl-color-neutral-600); color: var(--sl-color-neutral-0); }
-    .badge-pending { background: var(--sl-color-neutral-400); color: var(--sl-color-neutral-0); }
-    pre { background: var(--sl-color-neutral-50); padding: 0.5rem; overflow-x: auto; font-size: 0.8rem; border-radius: var(--sl-border-radius-medium); }
+    .check {
+      padding: var(--space-3);
+      margin-bottom: var(--space-2);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+    }
+    .check .badge { margin-right: var(--space-2); }
+    .check details { margin-top: var(--space-2); }
   </style>
 </head>
 <body x-cloak x-data="probePage" x-init="init()">
@@ -76,7 +77,8 @@
               { label: 'Conteggi tabelle', status: 'pending', summary: '', details: null },
               { label: this.t.probe.openBalanceLabel, status: 'pending', summary: '', details: null },
               { label: 'Profiles per ruolo', status: 'pending', summary: '', details: null },
-              { label: 'PWA installabile (manifest + SW)', status: 'pending', summary: '', details: null }
+              { label: 'PWA installabile (manifest + SW)', status: 'pending', summary: '', details: null },
+              { label: this.t.probe.backupTitle, status: 'pending', summary: '', details: null }
             ];
             await Promise.allSettled([
               this.runCheck(0, this.checkConfig.bind(this)),
@@ -86,7 +88,8 @@
               this.runCheck(4, this.checkCounts.bind(this)),
               this.runCheck(5, this.checkOpenBalance.bind(this)),
               this.runCheck(6, this.checkProfilesByRole.bind(this)),
-              this.runCheck(7, this.checkPwa.bind(this))
+              this.runCheck(7, this.checkPwa.bind(this)),
+              this.runCheck(8, this.checkBackupStatus.bind(this))
             ]);
           },
           badgeClass(s) {
@@ -222,10 +225,8 @@
             };
           },
           async checkOpenBalance() {
-            // .range(0, 49999) esplicito: PostgREST default limit Supabase = 1000 righe.
-            // A stagione piena (max ~50K transactions, di cui meta' aperte) il default
-            // sotto-stimerebbe. Aggreghiamo client-side. Se il probe diventa lento a
-            // stagione piena (> 5s), refactor a RPC SECURITY DEFINER lato DB.
+            // .range(0, 49999): bypass del default PostgREST (1000). Se il probe
+            // diventa lento a stagione piena (> 5s), refactor a RPC SECURITY DEFINER.
             var resp = await window.Auth.client.from('transactions')
               .select('amount, type, customer_id')
               .is('deleted_at', null).eq('paid', false)
@@ -315,14 +316,14 @@
                 swRegistered = !!reg;
                 swActive = !!(reg && reg.active);
                 swScope = reg ? reg.scope : null;
-              } catch (e) { /* no-op */ }
+              } catch (e) { }
             }
             var displayMode = 'browser';
             try {
               if (window.matchMedia('(display-mode: standalone)').matches) displayMode = 'standalone';
               else if (window.matchMedia('(display-mode: minimal-ui)').matches) displayMode = 'minimal-ui';
               else if (window.matchMedia('(display-mode: fullscreen)').matches) displayMode = 'fullscreen';
-            } catch (e) { /* no-op */ }
+            } catch (e) { }
             var status = (swSupported && swRegistered) ? 'OK' : 'FAIL';
             var swSummary = swActive ? 'active' : (swRegistered ? 'registered' : 'none');
             return {
@@ -343,6 +344,44 @@
                 display_mode: displayMode,
                 ios_safari: !!(window.PwaInstall && window.PwaInstall.isIosSafari && window.PwaInstall.isIosSafari())
               }
+            };
+          },
+          async checkBackupStatus() {
+            // callEdgeFunction (NON supabase-js .functions.invoke): l'invoke
+            // manda x-client-info, che il CORS preflight delle nostre edge
+            // function non whitelista, rompendo la chiamata.
+            var resp = await window.Auth.callEdgeFunction('probe-backup-status', {});
+            if (resp.status !== 200) {
+              return { status: 'FAIL', summary: 'HTTP ' + resp.status, details: resp };
+            }
+            var data = resp.body || {};
+            if (data.configured === false) {
+              return { status: 'n/a', summary: this.t.probe.backupNotConfigured, details: data };
+            }
+            if (!data.last_backup_date) {
+              return { status: 'FAIL', summary: this.t.probe.backupNone, details: data };
+            }
+            var ageH = data.age_hours;
+            var found = data.found_files;
+            var expected = data.expected_files;
+            if (found < expected) {
+              return {
+                status: 'FAIL',
+                summary: this.t.probe.backupIncomplete(data.last_backup_date, found, expected),
+                details: data
+              };
+            }
+            if (ageH >= 30) {
+              return {
+                status: 'FAIL',
+                summary: this.t.probe.backupStale(ageH, data.last_backup_date),
+                details: data
+              };
+            }
+            return {
+              status: 'OK',
+              summary: this.t.probe.backupOk(data.last_backup_date, ageH, found, expected),
+              details: data
             };
           },
           async logout() {

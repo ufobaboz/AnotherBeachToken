@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#145d2f">
+  <meta name="theme-color" content="#1f8a3e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ABT">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <script src="/assets/pwa.js" defer></script>
-  <title>Clienti -- Customer QR Tracker</title>
+  <title>Clienti -- AnotherBeachToken</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -19,11 +19,6 @@
   <script src="/assets/auth.js"></script>
   <script src="/assets/nav.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
-  <style>
-    [x-cloak] { display: none !important; }
-    .actions-bar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
-    .actions-bar input { flex: 1; margin: 0; min-width: 12rem; }
-  </style>
 </head>
 <body x-cloak x-data="customersPage" x-init="init()">
   <nav class="app-nav" x-data="appNav" x-init="init()">
@@ -40,29 +35,38 @@
     <div class="actions-bar">
       <input type="search" x-model="query" :placeholder="t.customers.searchPlaceholder"
              @input.debounce.250ms="onSearch()">
+      <button class="btn btn--outline" @click="toggleShowAll()"
+              x-text="showAll ? t.customers.showOpen : t.customers.showAll"></button>
       <a href="/customers/new" class="btn btn--primary" x-text="t.customers.newButton"></a>
     </div>
     <article x-show="!loading && filtered.length === 0" x-cloak>
-      <p x-text="query ? t.customers.emptySearch : t.customers.empty"></p>
+      <p x-text="query ? t.customers.emptySearch : (showAll ? t.customers.empty : t.customers.emptyOpen)"></p>
     </article>
     <table x-show="filtered.length > 0" x-cloak>
       <thead>
         <tr>
           <th x-text="t.customers.columnName"></th>
-          <th x-text="t.customers.columnPhone"></th>
+          <th class="col-balance" x-text="t.customers.columnBalance"></th>
           <th x-text="t.customers.columnCreatedAt"></th>
         </tr>
       </thead>
       <tbody>
-        <template x-for="c in filtered" :key="c.id">
-          <tr>
-            <td><a :href="'/customers/' + c.id" x-text="c.last_name + ' ' + c.first_name"></a></td>
-            <td x-text="c.phone"></td>
+        <template x-for="c in paged" :key="c.id">
+          <tr :class="c.deleted_at ? 'deleted' : ''">
+            <td><a :href="'/customers/' + c.id" x-text="c.first_name + ' ' + c.last_name"></a></td>
+            <td class="col-balance" x-text="formatBalance(c.balance)"></td>
             <td x-text="formatDate(c.created_at)"></td>
           </tr>
         </template>
       </tbody>
     </table>
+    <nav class="pagination" x-show="totalPages > 1" x-cloak aria-label="Paginazione clienti">
+      <button class="btn btn--outline btn--sm" :disabled="page <= 1"
+              @click="prevPage()" x-text="t.customers.pagePrev"></button>
+      <span class="pagination-info" x-text="t.customers.pageInfo(page, totalPages)"></span>
+      <button class="btn btn--outline btn--sm" :disabled="page >= totalPages"
+              @click="nextPage()" x-text="t.customers.pageNext"></button>
+    </nav>
   </main>
   <script>
     document.addEventListener('alpine:init', function () {
@@ -73,6 +77,16 @@
           all: [],
           filtered: [],
           query: '',
+          showAll: false,
+          page: 1,
+          pageSize: 25,
+          get paged() {
+            var start = (this.page - 1) * this.pageSize;
+            return this.filtered.slice(start, start + this.pageSize);
+          },
+          get totalPages() {
+            return Math.max(1, Math.ceil(this.filtered.length / this.pageSize));
+          },
           async init() {
             var session = await window.Auth.requireAuth();
             if (!session) return;
@@ -80,32 +94,104 @@
             await this.loadAll();
             this.loading = false;
           },
-          async loadAll() {
-            var resp = await window.Auth.client.from('customers')
-              .select('id, first_name, last_name, phone, created_at')
-              .is('deleted_at', null)
-              .order('last_name', { ascending: true })
-              .order('first_name', { ascending: true });
-            if (resp.error) {
-              console.error('[customers] loadAll error', resp.error);
-              this.all = [];
-            } else {
-              this.all = resp.data || [];
+          async fetchAllCustomers() {
+            // PostgREST clampa range > max-rows server-side (default 1000):
+            // serve loop esplicito per dataset > 1000 righe.
+            var chunk = 1000;
+            var all = [];
+            for (var offset = 0; ; offset += chunk) {
+              var q = window.Auth.client.from('customers')
+                .select('id, first_name, last_name, phone, created_at, deleted_at')
+                .range(offset, offset + chunk - 1);
+              if (!this.showAll) q = q.is('deleted_at', null);
+              var resp = await q;
+              if (resp.error) return resp;
+              var batch = resp.data || [];
+              all = all.concat(batch);
+              if (batch.length < chunk) break;
             }
-            this.filtered = this.all.slice();
+            return { data: all, error: null };
           },
-          onSearch() {
-            var q = (this.query || '').trim().toLowerCase();
-            if (!q) { this.filtered = this.all.slice(); return; }
-            this.filtered = this.all.filter(function (c) {
-              return (c.first_name + ' ' + c.last_name + ' ' + c.last_name + ' ' + c.first_name + ' ' + c.phone).toLowerCase().indexOf(q) !== -1;
+          async fetchAllTransactions() {
+            var chunk = 1000;
+            var all = [];
+            for (var offset = 0; ; offset += chunk) {
+              var resp = await window.Auth.client.from('transactions')
+                .select('customer_id, type, amount, paid, created_at')
+                .is('deleted_at', null)
+                .range(offset, offset + chunk - 1);
+              if (resp.error) return resp;
+              var batch = resp.data || [];
+              all = all.concat(batch);
+              if (batch.length < chunk) break;
+            }
+            return { data: all, error: null };
+          },
+          async loadAll() {
+            var customersResp = await this.fetchAllCustomers();
+            if (customersResp.error) {
+              console.error('[customers] loadAll customers error', customersResp.error);
+              this.all = [];
+              this.applyFilter();
+              return;
+            }
+            var txResp = await this.fetchAllTransactions();
+            var balanceByCustomer = {};
+            var lastTxByCustomer = {};
+            if (txResp.error) {
+              console.warn('[customers] loadAll transactions error', txResp.error);
+            } else {
+              (txResp.data || []).forEach(function (tx) {
+                if (!lastTxByCustomer[tx.customer_id] || tx.created_at > lastTxByCustomer[tx.customer_id]) {
+                  lastTxByCustomer[tx.customer_id] = tx.created_at;
+                }
+                if (tx.paid) return;
+                var amt = parseFloat(tx.amount) || 0;
+                if (!balanceByCustomer[tx.customer_id]) balanceByCustomer[tx.customer_id] = 0;
+                if (tx.type === 'charge') balanceByCustomer[tx.customer_id] += amt;
+                else if (tx.type === 'reversal') balanceByCustomer[tx.customer_id] -= amt;
+              });
+            }
+            this.all = (customersResp.data || []).map(function (c) {
+              return Object.assign({}, c, {
+                balance: Math.round((balanceByCustomer[c.id] || 0) * 100) / 100,
+                last_tx_at: lastTxByCustomer[c.id] || null
+              });
             });
+            this.all.sort(function (a, b) {
+              if (b.balance !== a.balance) return b.balance - a.balance;
+              var ltA = a.last_tx_at || '';
+              var ltB = b.last_tx_at || '';
+              if (ltA !== ltB) return ltB.localeCompare(ltA);
+              return (b.created_at || '').localeCompare(a.created_at || '');
+            });
+            this.applyFilter();
           },
+          applyFilter() {
+            var q = (this.query || '').trim().toLowerCase();
+            var base = this.showAll ? this.all : this.all.filter(function (c) { return c.balance > 0 && !c.deleted_at; });
+            if (q) {
+              base = base.filter(function (c) {
+                return (c.first_name + ' ' + c.last_name + ' ' + c.phone).toLowerCase().indexOf(q) !== -1;
+              });
+            }
+            this.filtered = base;
+            this.page = 1;
+          },
+          onSearch() { this.applyFilter(); },
+          async toggleShowAll() { this.showAll = !this.showAll; await this.loadAll(); },
+          prevPage() { if (this.page > 1) this.page--; },
+          nextPage() { if (this.page < this.totalPages) this.page++; },
           formatDate(iso) {
             try {
               var d = new Date(iso);
               return d.toLocaleDateString('it-IT');
             } catch (e) { return iso; }
+          },
+          formatBalance(n) {
+            try {
+              return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' EUR';
+            } catch (e) { return String(n); }
           },
           async logout() { await window.Auth.signOut(); }
         };

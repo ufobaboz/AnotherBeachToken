@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# vendor-download.sh -- scarica/aggiorna le vendor libraries in public/vendor/.
-# Eseguire dalla root del repo: bash scripts/vendor-download.sh
-# Idempotente: se un file/directory destinazione esiste, viene saltato.
-# Per upgrade: cambiare la _VERSION corrispondente, rilanciare, committare.
+# Idempotente: file esistente -> skip. Upgrade: cambia _VERSION, rilancia, committa.
 set -euo pipefail
 
 VENDOR_ROOT="public/vendor"
@@ -30,28 +27,21 @@ download_file() {
   echo "[ok]   $dest"
 }
 
-# 1. Alpine.js
 download_file \
   "${JSDELIVR}/alpinejs@${ALPINE_VERSION}/dist/cdn.min.js" \
   "${VENDOR_ROOT}/alpinejs/${ALPINE_VERSION}/alpine.min.js"
 
-# 2. Supabase JS (UMD bundle browser)
 download_file \
   "${JSDELIVR}/@supabase/supabase-js@${SUPABASE_VERSION}/dist/umd/supabase.js" \
   "${VENDOR_ROOT}/supabase/${SUPABASE_VERSION}/supabase.js"
 
-# 3. html5-qrcode
 download_file \
   "${JSDELIVR}/html5-qrcode@${HTML5QR_VERSION}/html5-qrcode.min.js" \
   "${VENDOR_ROOT}/html5-qrcode/${HTML5QR_VERSION}/html5-qrcode.min.js"
 
-# 4. qrcode (ESM bundle, jsdelivr +esm). Il package upstream non
-# pubblica un UMD browser standalone: lib/browser.js e' un wrapper
-# che richiede un bundler. Il bundle ESM auto-generato da jsdelivr
-# (rollup+terser) e' pronto per <script type="module">.
-# Il bundle ha 1 dipendenza esterna runtime su /npm/dijkstrajs@1.0.3/+esm
-# che noi NON serviamo: la self-hostiamo come dijkstrajs.js a fianco e
-# patchiamo l'import path nel bundle a /vendor/qrcode/<v>/dijkstrajs.js.
+# Il bundle ESM di jsdelivr per qrcode ha import runtime su
+# /npm/dijkstrajs@<v>/+esm. Self-hostiamo dijkstrajs e patchiamo l'import
+# path per evitare fetch verso jsdelivr in runtime.
 DIJKSTRA_VERSION="1.0.3"
 download_file \
   "${JSDELIVR}/qrcode@${QRCODE_VERSION}/+esm" \
@@ -59,14 +49,13 @@ download_file \
 download_file \
   "${JSDELIVR}/dijkstrajs@${DIJKSTRA_VERSION}/+esm" \
   "${VENDOR_ROOT}/qrcode/${QRCODE_VERSION}/dijkstrajs.js"
-# Patch idempotente: sostituisci l'import esterno se presente
 QRCODE_BUNDLE="${VENDOR_ROOT}/qrcode/${QRCODE_VERSION}/qrcode.esm.min.js"
 if grep -q '/npm/dijkstrajs@' "$QRCODE_BUNDLE"; then
   sed -i "s|from\"/npm/dijkstrajs@${DIJKSTRA_VERSION}/+esm\"|from\"/vendor/qrcode/${QRCODE_VERSION}/dijkstrajs.js\"|g" "$QRCODE_BUNDLE"
   echo "[ok]   patched qrcode bundle import dijkstrajs -> /vendor/qrcode/${QRCODE_VERSION}/dijkstrajs.js"
 fi
 
-# 5. Shoelace -- intera cartella cdn/ via tarball npm registry (no npm CLI)
+# Shoelace via tarball npm registry: serve l'intera cartella cdn/.
 SL_DEST="${VENDOR_ROOT}/shoelace/${SHOELACE_VERSION}"
 if [[ -d "$SL_DEST" && -f "${SL_DEST}/shoelace-autoloader.js" ]]; then
   echo "[skip] $SL_DEST gia presente"

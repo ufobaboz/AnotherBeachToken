@@ -6,6 +6,10 @@ main = "src/worker.js"
 [assets]
 directory = "./public"
 binding = "ASSETS"
+run_worker_first = true
+
+[vars]
+SUPABASE_URL = "https://xccpopnwqrxjjhrtyiwd.supabase.co"
 
 [env.dev]
 name = "anotherbeachproject-dev"
@@ -13,3 +17,7 @@ name = "anotherbeachproject-dev"
 [env.dev.assets]
 directory = "./public"
 binding = "ASSETS"
+run_worker_first = true
+
+[env.dev.vars]
+SUPABASE_URL = "https://esxnberopfmfaebmbqwd.supabase.co"

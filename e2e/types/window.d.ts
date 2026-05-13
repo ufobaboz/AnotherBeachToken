@@ -1,8 +1,3 @@
-// Type augmentation for window.Auth used in E2E page.evaluate calls.
-// Lives in e2e/types/, NOT in repo/public/, since it's only relevant
-// to the Playwright runtime. The actual implementation is in
-// repo/public/assets/auth.js (vanilla JS IIFE).
-
 export {};
 
 interface AuthCallResult {
@@ -29,7 +24,6 @@ declare global {
           };
         };
       };
-      // Aggiungere altri metodi via via che servono nei test E2E.
     };
   }
 }

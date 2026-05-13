@@ -1,23 +1,13 @@
-// repo/public/assets/pwa.js
-// Bootstrap PWA per ogni pagina operatore:
-//   1) registra il service worker (criterio installabilita' Chrome);
-//   2) inietta un pulsante "Installa app" nella topbar (o nel main se la nav
-//      non esiste, come su /login), gestendo entrambi i flussi:
-//         - Android Chrome: cattura beforeinstallprompt, chiama prompt() al click.
-//         - iOS Safari: niente API, apre un overlay con istruzioni "Condividi -> Aggiungi a Home".
-//   3) si nasconde da solo se l'app gira gia' in modalita' standalone o dopo appinstalled.
-//
-// Niente dipendenze: solo DOM puro + window.Strings. Nessuna modifica al markup
-// delle pagine: il pulsante e' iniettato a runtime in nav.app-nav .nav-actions
-// (prima del bottone Esci) oppure, come fallback, dentro main.container.
-
+// Android Chrome: cattura beforeinstallprompt, chiama prompt() al click.
+// iOS Safari: niente API, overlay con istruzioni "Condividi -> Aggiungi a Home".
+// Standalone/appinstalled: il button si auto-nasconde.
 (function () {
   if (typeof window === 'undefined') return;
 
   function isStandalone() {
     try {
       if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
-    } catch (e) { /* no-op */ }
+    } catch (e) { }
     if (window.navigator && window.navigator.standalone === true) return true;
     return false;
   }
@@ -26,7 +16,7 @@
     var ua = (window.navigator && window.navigator.userAgent) || '';
     var isIosDevice = /iPhone|iPad|iPod/.test(ua) || (ua.indexOf('Mac') !== -1 && 'ontouchend' in document);
     if (!isIosDevice) return false;
-    // Escludi browser non-Safari su iOS (CriOS = Chrome iOS, FxiOS = Firefox iOS, EdgiOS = Edge iOS).
+    // Esclude Chrome/Firefox/Edge/Opera su iOS: usano motori non-Safari.
     if (/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)) return false;
     return true;
   }
@@ -39,7 +29,9 @@
       iosStep1: s.iosStep1 || '1. Tocca il pulsante Condividi in basso (quadrato con freccia verso l\'alto).',
       iosStep2: s.iosStep2 || '2. Scorri il menu e scegli "Aggiungi alla schermata Home".',
       iosStep3: s.iosStep3 || '3. Conferma con "Aggiungi" in alto a destra.',
-      iosClose: s.iosClose || 'Ho capito'
+      iosClose: s.iosClose || 'Ho capito',
+      genericTitle: s.genericTitle || 'Installa app',
+      genericBody: s.genericBody || 'Il browser non ha proposto l\'installazione automatica. Apri il menu del browser e cerca la voce "Installa app" o "Aggiungi a schermata Home".'
     };
   }
 
@@ -64,31 +56,20 @@
 
   function mountButton(btn) {
     var navActions = document.querySelector('nav.app-nav .nav-actions');
-    if (navActions) {
-      // Inserisci prima del pulsante Esci, se presente; altrimenti come ultimo figlio.
-      var logout = navActions.querySelector('button.btn--outline');
-      if (logout) {
-        navActions.insertBefore(btn, logout);
-      } else {
-        navActions.appendChild(btn);
-      }
-      return true;
+    if (!navActions) return false;
+    var logout = navActions.querySelector('button.btn--outline');
+    if (logout) {
+      navActions.insertBefore(btn, logout);
+    } else {
+      navActions.appendChild(btn);
     }
-    var main = document.querySelector('main.container');
-    if (main) {
-      btn.classList.remove('btn--ghost');
-      btn.classList.add('btn--outline', 'pwa-install-btn--standalone');
-      btn.style.marginTop = '1rem';
-      main.appendChild(btn);
-      return true;
-    }
-    return false;
+    return true;
   }
 
-  function showIosInstructions(t) {
-    if (document.querySelector('.pwa-ios-overlay')) return;
+  function showOverlay(title, paragraphs, closeLabel) {
+    if (document.querySelector('.pwa-install-overlay')) return;
     var overlay = document.createElement('div');
-    overlay.className = 'pwa-ios-overlay';
+    overlay.className = 'pwa-install-overlay';
     Object.assign(overlay.style, {
       position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.55)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -100,69 +81,76 @@
       maxWidth: '22rem', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.25)'
     });
     var h = document.createElement('h2');
-    h.textContent = t.iosTitle;
+    h.textContent = title;
     h.style.margin = '0 0 0.75rem';
     h.style.fontSize = '1.1rem';
-    var p1 = document.createElement('p'); p1.textContent = t.iosStep1; p1.style.margin = '0 0 0.5rem';
-    var p2 = document.createElement('p'); p2.textContent = t.iosStep2; p2.style.margin = '0 0 0.5rem';
-    var p3 = document.createElement('p'); p3.textContent = t.iosStep3; p3.style.margin = '0 0 0.75rem';
+    card.appendChild(h);
+    paragraphs.forEach(function (text) {
+      var p = document.createElement('p');
+      p.textContent = text;
+      p.style.margin = '0 0 0.5rem';
+      card.appendChild(p);
+    });
     var close = document.createElement('button');
     close.type = 'button';
     close.className = 'btn btn--primary';
-    close.textContent = t.iosClose;
+    close.textContent = closeLabel;
     close.style.width = '100%';
+    close.style.marginTop = '0.5rem';
     close.addEventListener('click', function () { overlay.remove(); });
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) overlay.remove();
     });
-    card.appendChild(h);
-    card.appendChild(p1);
-    card.appendChild(p2);
-    card.appendChild(p3);
     card.appendChild(close);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
   }
 
+  function showIosInstructions(t) {
+    showOverlay(t.iosTitle, [t.iosStep1, t.iosStep2, t.iosStep3], t.iosClose);
+  }
+
+  function showGenericInstructions(t) {
+    showOverlay(t.genericTitle, [t.genericBody], t.iosClose);
+  }
+
+  var deferredPrompt = null;
+  var installedHandlers = [];
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+  });
+
+  window.addEventListener('appinstalled', function () {
+    deferredPrompt = null;
+    installedHandlers.forEach(function (h) { try { h(); } catch (_e) { } });
+  });
+
+  function triggerInstall() {
+    var t = strings();
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      var p = deferredPrompt.userChoice;
+      if (p && typeof p.then === 'function') {
+        p.then(function () { deferredPrompt = null; });
+      } else {
+        deferredPrompt = null;
+      }
+      return;
+    }
+    if (isIosSafari()) { showIosInstructions(t); return; }
+    showGenericInstructions(t);
+  }
+
   function bootInstallButton() {
-    if (isStandalone()) return; // gia' installata
+    if (isStandalone()) return;
     var t = strings();
     var btn = makeInstallButton(t.installLabel);
     if (!mountButton(btn)) return;
-
-    var deferred = null;
-    var iosMode = isIosSafari();
-
-    if (iosMode) {
-      btn.style.display = '';
-      btn.addEventListener('click', function () { showIosInstructions(t); });
-    }
-
-    window.addEventListener('beforeinstallprompt', function (e) {
-      e.preventDefault();
-      deferred = e;
-      btn.style.display = '';
-    });
-
-    if (!iosMode) {
-      btn.addEventListener('click', function () {
-        if (!deferred) return;
-        deferred.prompt();
-        if (deferred.userChoice && typeof deferred.userChoice.then === 'function') {
-          deferred.userChoice.then(function () {
-            deferred = null;
-            btn.style.display = 'none';
-          });
-        } else {
-          deferred = null;
-          btn.style.display = 'none';
-        }
-      });
-    }
-
-    window.addEventListener('appinstalled', function () {
-      btn.style.display = 'none';
-    });
+    btn.style.display = '';
+    btn.addEventListener('click', triggerInstall);
+    installedHandlers.push(function () { btn.style.display = 'none'; });
   }
 
   function ready(fn) {
@@ -176,9 +164,11 @@
   registerServiceWorker();
   ready(bootInstallButton);
 
-  // Esposto per test/debug.
   window.PwaInstall = {
     isStandalone: isStandalone,
-    isIosSafari: isIosSafari
+    isIosSafari: isIosSafari,
+    triggerInstall: triggerInstall,
+    installLabel: function () { return strings().installLabel; },
+    onInstalled: function (fn) { if (typeof fn === 'function') installedHandlers.push(fn); }
   };
 })();

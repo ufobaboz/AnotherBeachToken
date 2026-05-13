@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Il tuo QR -- Customer QR Tracker</title>
+  <title>Il tuo QR -- AnotherBeachToken</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -11,23 +11,58 @@
   <script src="/assets/strings.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
-    [x-cloak] { display: none !important; }
-    main.container { max-width: 28rem; margin-top: 3rem; text-align: center; }
-    img.qr-image { max-width: 280px; margin: 1rem auto; image-rendering: pixelated; }
-    .balance { font-size: 1.4rem; margin-top: 1rem; }
+    /* QR pubblico: pagina che il cliente apre scansionando il proprio token.
+       Layout centrato, mono per leggibilita' del saldo. */
+    main.container.qr-public {
+      margin-top: 2.5rem;
+      text-align: center;
+    }
+    .qr-public h1 {
+      font-size: var(--text-xl);
+      margin-bottom: var(--space-4);
+    }
+    .qr-public .balance {
+      margin-top: var(--space-5);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-left: 4px solid var(--color-accent);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-card);
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .qr-public .balance strong {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wide);
+      color: var(--color-ink-muted);
+    }
+    .qr-public .balance span {
+      font-family: var(--font-mono);
+      font-size: var(--text-2xl);
+      font-weight: var(--weight-bold);
+      color: var(--color-ink);
+    }
   </style>
 </head>
 <body x-cloak x-data="qrPublicPage" x-init="init()">
-  <main class="container">
+  <main class="container container--narrow qr-public">
     <article x-show="notFound" x-cloak><p x-text="t.qrPublic.notFound"></p></article>
     <template x-if="info">
       <div>
         <h1 x-text="t.qrPublic.greeting(info.first_name)"></h1>
         <img class="qr-image" :src="qrDataUrl" :alt="t.qrPublic.qrAlt">
-        <p class="balance">
-          <strong x-text="t.qrPublic.openBalanceLabel"></strong>:
+        <div class="balance">
+          <strong x-text="t.qrPublic.openBalanceLabel"></strong>
           <span x-text="formatBalance(info.open_balance) + ' ' + t.qrPublic.currency"></span>
-        </p>
+          <button class="btn btn--outline btn--sm balance-refresh"
+                  @click="reload()" :disabled="loading"
+                  x-text="t.qrPublic.refresh"></button>
+        </div>
       </div>
     </template>
   </main>
@@ -38,26 +73,21 @@
           t: window.Strings,
           info: null,
           notFound: false,
+          loading: false,
           qrDataUrl: '',
+          token: '',
+          anonClient: null,
           async init() {
             document.body.removeAttribute('x-cloak');
             var match = location.pathname.match(/^\/qr\/([A-Z2-7]{32})\/?$/);
             if (!match) { this.notFound = true; return; }
-            var token = match[1];
-            var anonClient = window.supabase.createClient(
+            this.token = match[1];
+            this.anonClient = window.supabase.createClient(
               window.APP_CONFIG.SUPABASE_URL,
               window.APP_CONFIG.SUPABASE_ANON_KEY,
               { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
             );
-            var resp = await anonClient.rpc('get_customer_qr_info', { p_token: token });
-            if (resp.error) {
-              console.error('[qr-public] rpc error', resp.error);
-              this.notFound = true;
-              return;
-            }
-            var rows = resp.data || [];
-            if (rows.length === 0) { this.notFound = true; return; }
-            this.info = rows[0];
+            await this.loadInfo();
             try {
               var QRCodeModule = await import('/vendor/qrcode/1.5.4/qrcode.esm.min.js');
               var QRCode = QRCodeModule.default || QRCodeModule;
@@ -66,6 +96,21 @@
               console.error('[qr-public] qr generation failed', e);
             }
           },
+          async loadInfo() {
+            if (this.loading) return;
+            this.loading = true;
+            var resp = await this.anonClient.rpc('get_customer_qr_info', { p_token: this.token });
+            this.loading = false;
+            if (resp.error) {
+              console.error('[qr-public] rpc error', resp.error);
+              if (!this.info) this.notFound = true;
+              return;
+            }
+            var rows = resp.data || [];
+            if (rows.length === 0) { this.notFound = true; return; }
+            this.info = rows[0];
+          },
+          async reload() { await this.loadInfo(); },
           formatBalance(n) {
             try {
               return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

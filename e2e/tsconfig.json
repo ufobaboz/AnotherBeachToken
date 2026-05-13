@@ -11,5 +11,5 @@
     "isolatedModules": true,
     "types": ["node", "@playwright/test"]
   },
-  "include": ["specs/**/*.ts", "helpers/**/*.ts", "types/**/*.ts", "playwright.config.ts"]
+  "include": ["specs/**/*.ts", "helpers/**/*.ts", "types/**/*.ts", "playwright.config.ts", "globalTeardown.ts"]
 }

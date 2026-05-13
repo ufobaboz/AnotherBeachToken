@@ -1,21 +1,7 @@
--- ============================================================
--- rls.sql - Customer QR Tracker - Row Level Security
--- ============================================================
--- Da applicare DOPO sql/schema.sql nello SQL Editor di Supabase.
--- Vedi sql/README.md per la procedura completa di setup.
---
--- Idempotente: helper e trigger functions sono CREATE OR REPLACE,
--- trigger e policy sono DROP IF EXISTS prima del CREATE.
--- ============================================================
+-- RLS idempotente. Applicare DOPO sql/schema.sql.
 
--- ------------------------------------------------------------
--- 1. Helper functions
--- ------------------------------------------------------------
--- current_user_role() bypassa RLS su profiles tramite SECURITY
--- DEFINER (altrimenti loop). Le altre helper sono wrapper
--- booleani sql STABLE.
--- ------------------------------------------------------------
-
+-- current_user_role(): SECURITY DEFINER per evitare il loop RLS su profiles
+-- (sarebbe self-referential se non bypassasse RLS).
 create or replace function public.current_user_role()
 returns public.user_role
 language sql stable security definer
@@ -51,14 +37,8 @@ returns boolean language sql stable
 set search_path = public
 as $$ select public.current_user_role() is not null $$;
 
--- ------------------------------------------------------------
--- 2. Trigger functions
--- ------------------------------------------------------------
-
--- profiles: protegge id e created_at; auto-popola
--- last_modified_at. last_modified_by_id viene preservato se gia'
--- valorizzato dal chiamante (es. una Edge Function che agisce
--- per conto di un altro utente), altrimenti settato a auth.uid().
+-- last_modified_by_id preservato se gia' valorizzato (caso: Edge Function
+-- che agisce per conto di un altro utente).
 create or replace function public.profiles_protect_immutable()
 returns trigger language plpgsql security definer
 set search_path = public
@@ -72,8 +52,9 @@ begin
   return new;
 end $$;
 
--- customers: protegge id, qr_token, created_by_id, created_at;
--- auto-popola last_modified_*.
+-- Soft-delete bloccato se esistono tx aperte: l'archiviazione e' irreversibile
+-- via UI e perderebbe traccia del saldo. Difesa in profondita' rispetto al
+-- nasconde-button lato UI.
 create or replace function public.customers_protect_immutable()
 returns trigger language plpgsql security definer
 set search_path = public
@@ -84,16 +65,24 @@ begin
   if new.created_by_id is distinct from old.created_by_id then raise exception 'customers.created_by_id is immutable'; end if;
   if new.created_at    is distinct from old.created_at    then raise exception 'customers.created_at is immutable';    end if;
 
+  if new.deleted_at is not null and old.deleted_at is null then
+    if exists (
+      select 1 from public.transactions
+      where customer_id = new.id
+        and paid = false
+        and deleted_at is null
+    ) then
+      raise exception 'cannot archive customer with open transactions' using errcode = 'P0001';
+    end if;
+  end if;
+
   new.last_modified_by_id := auth.uid();
   new.last_modified_at    := now();
   return new;
 end $$;
 
--- transactions: tutti i campi sono immutabili tranne i 4 di
--- pagamento (paid, paid_at, payment_method, paid_by_id).
--- deleted_at non e' modificabile via UPDATE: se serve cancellare
--- una transazione (caso eccezionale), va fatto via Edge Function
--- che bypassa RLS e i trigger.
+-- Immutabile tranne i 4 campi di pagamento. deleted_at NON modificabile via
+-- UPDATE: cancellazione eccezionale richiede Edge Function (bypass RLS+trigger).
 create or replace function public.transactions_protect_immutable()
 returns trigger language plpgsql security definer
 set search_path = public
@@ -111,15 +100,8 @@ begin
   return new;
 end $$;
 
--- transactions: validazione reversal cross-row.
--- Lo storno e' SEMPRE TOTALE: amount del reversal = amount della
--- charge originale. La unicita' di reversal_of_id (vincolo UNIQUE
--- sulla colonna) garantisce che una charge possa essere stornata
--- al massimo UNA VOLTA.
--- Verifiche fatte qui:
--- 1. La charge referenziata esiste, e' dello stesso customer,
---    type='charge', non pagata, non cancellata.
--- 2. amount del reversal == amount della charge.
+-- Storno SEMPRE TOTALE: amount(reversal) = amount(charge). L'unicita' di
+-- reversal_of_id garantisce 1 storno max per charge.
 create or replace function public.transactions_validate_reversal()
 returns trigger language plpgsql security definer
 set search_path = public
@@ -147,10 +129,6 @@ begin
   return new;
 end $$;
 
--- ------------------------------------------------------------
--- 3. Trigger CREATE
--- ------------------------------------------------------------
-
 drop trigger if exists profiles_before_update on public.profiles;
 create trigger profiles_before_update
   before update on public.profiles
@@ -171,14 +149,8 @@ create trigger transactions_before_insert
   before insert on public.transactions
   for each row execute function public.transactions_validate_reversal();
 
--- ------------------------------------------------------------
--- 4. Abilitazione RLS
--- ------------------------------------------------------------
--- FORCE significa che anche il proprietario della tabella
--- (postgres user che esegue le migration) e' soggetto alle
--- policy. Le Edge Functions con service_role mantengono il
--- bypass via supabase_admin.
--- ------------------------------------------------------------
+-- FORCE: anche il table owner (postgres user delle migration) e' soggetto
+-- alle policy. service_role mantiene il bypass via supabase_admin.
 
 alter table public.profiles     enable row level security;
 alter table public.profiles     force  row level security;
@@ -189,53 +161,41 @@ alter table public.customers    force  row level security;
 alter table public.transactions enable row level security;
 alter table public.transactions force  row level security;
 
--- ------------------------------------------------------------
--- 5. Policy: profiles
--- ------------------------------------------------------------
--- INSERT/UPDATE/DELETE non hanno policy: tutto via Edge
--- Functions con service_role.
--- ------------------------------------------------------------
+-- profiles INSERT/UPDATE/DELETE: tutto via Edge Functions con service_role.
 
 drop policy if exists profiles_select_self         on public.profiles;
 drop policy if exists profiles_select_admin_active on public.profiles;
+drop policy if exists profiles_select_admin        on public.profiles;
 drop policy if exists profiles_select_super_admin  on public.profiles;
 
--- ognuno legge sempre il proprio profilo
 create policy profiles_select_self on public.profiles
   for select to authenticated
   using (id = auth.uid());
 
--- admin vede tutti i profili attivi
-create policy profiles_select_admin_active on public.profiles
+-- admin vede solo operator (NON altri admin): separazione di privilegio.
+create policy profiles_select_admin on public.profiles
   for select to authenticated
-  using (deleted_at is null and public.is_admin());
+  using (public.is_admin() and role = 'operator');
 
--- super_admin vede tutti i profili, inclusi cancellati
 create policy profiles_select_super_admin on public.profiles
   for select to authenticated
   using (public.is_super_admin());
 
--- ------------------------------------------------------------
--- 6. Policy: customers
--- ------------------------------------------------------------
-
 drop policy if exists customers_select_active      on public.customers;
 drop policy if exists customers_select_super_admin on public.customers;
+drop policy if exists customers_select_admin       on public.customers;
 drop policy if exists customers_insert             on public.customers;
 drop policy if exists customers_update_attributes  on public.customers;
 drop policy if exists customers_update_soft_delete on public.customers;
 
--- operator+ legge clienti attivi
 create policy customers_select_active on public.customers
   for select to authenticated
   using (deleted_at is null and public.is_operator_or_above());
 
--- super_admin vede anche cancellati
-create policy customers_select_super_admin on public.customers
+create policy customers_select_admin on public.customers
   for select to authenticated
-  using (public.is_super_admin());
+  using (public.is_admin_or_above());
 
--- operator+ crea cliente; created_by_id obbligato a auth.uid()
 create policy customers_insert on public.customers
   for insert to authenticated
   with check (
@@ -246,38 +206,29 @@ create policy customers_insert on public.customers
     and last_modified_at is null
   );
 
--- operator+ aggiorna anagrafica (deleted_at deve restare NULL)
 create policy customers_update_attributes on public.customers
   for update to authenticated
   using (deleted_at is null and public.is_operator_or_above())
   with check (deleted_at is null);
 
--- admin+ puo' fare soft-delete (settare deleted_at)
 create policy customers_update_soft_delete on public.customers
   for update to authenticated
   using (deleted_at is null and public.is_admin_or_above())
   with check (public.is_admin_or_above());
-
--- ------------------------------------------------------------
--- 7. Policy: transactions
--- ------------------------------------------------------------
 
 drop policy if exists transactions_select_active      on public.transactions;
 drop policy if exists transactions_select_super_admin on public.transactions;
 drop policy if exists transactions_insert             on public.transactions;
 drop policy if exists transactions_update_close       on public.transactions;
 
--- operator+ legge transazioni attive
 create policy transactions_select_active on public.transactions
   for select to authenticated
   using (deleted_at is null and public.is_operator_or_above());
 
--- super_admin vede tutte (anche cancellate)
 create policy transactions_select_super_admin on public.transactions
   for select to authenticated
   using (public.is_super_admin());
 
--- operator+ inserisce charge o reversal, sempre paid=false
 create policy transactions_insert on public.transactions
   for insert to authenticated
   with check (
@@ -290,7 +241,6 @@ create policy transactions_insert on public.transactions
     and deleted_at is null
   );
 
--- admin+ chiude conto: paid=false -> paid=true, paid_by_id=auth.uid()
 create policy transactions_update_close on public.transactions
   for update to authenticated
   using (
@@ -305,58 +255,14 @@ create policy transactions_update_close on public.transactions
     and payment_method is not null
   );
 
--- ------------------------------------------------------------
--- 8. Privilegi sulle helper / trigger functions
--- ------------------------------------------------------------
--- Default Postgres: ogni funzione e' GRANT EXECUTE TO PUBLIC.
--- Lo lasciamo solo dove serve. Riduzione superficie d'attacco
--- segnalata dagli advisor Supabase (search_path mutable e
--- SECURITY DEFINER esposte via /rest/v1/rpc).
--- ------------------------------------------------------------
-
--- current_user_role e' helper interno. Le policy authenticated la
--- chiamano via is_admin/is_operator/... e quindi authenticated
--- DEVE mantenere EXECUTE. anon e' anonimo: chiamarla via REST
--- ritornerebbe NULL, ma non c'e' motivo di esporla.
+-- Postgres concede EXECUTE a PUBLIC su ogni function: revoke esplicito sotto
+-- riduce la superficie /rest/v1/rpc segnalata dagli advisor Supabase.
+-- authenticated mantiene EXECUTE su current_user_role (chiamata dalle policy
+-- via is_admin/is_operator/...).
 revoke execute on function public.current_user_role() from public, anon;
 
--- Trigger functions: NON sono pensate per essere chiamate via
--- REST. Le trigger continuano a funzionare perche' le invoca il
--- sistema (BEFORE INSERT/UPDATE), non i client.
+-- Trigger functions: invocate dal sistema, mai dai client.
 revoke execute on function public.customers_protect_immutable()    from public, anon, authenticated;
 revoke execute on function public.profiles_protect_immutable()     from public, anon, authenticated;
 revoke execute on function public.transactions_protect_immutable() from public, anon, authenticated;
 revoke execute on function public.transactions_validate_reversal() from public, anon, authenticated;
-
--- ------------------------------------------------------------
--- 9. Verifiche post-applicazione (opzionali, da eseguire a mano)
--- ------------------------------------------------------------
--- -- policy attive per tabella (cast il literal a regclass: il
--- -- ::regclass::text varia in base al search_path):
--- select polrelid::regclass as tabella, polname, polcmd
---   from pg_policy
---  where polrelid in (
---        'public.profiles'::regclass,
---        'public.customers'::regclass,
---        'public.transactions'::regclass
---        )
---  order by polrelid::regclass::text, polname;
---
--- -- RLS abilitato + force (forcerowsecurity vive in pg_class, non in pg_tables):
--- select c.relname             as tablename,
---        c.relrowsecurity      as rowsecurity,
---        c.relforcerowsecurity as forcerowsecurity
---   from pg_class c
---   join pg_namespace n on n.oid = c.relnamespace
---  where n.nspname = 'public'
---    and c.relname in ('profiles','customers','transactions');
---
--- -- trigger attivi (escluso quelli interni):
--- select tgname, tgrelid::regclass
---   from pg_trigger
---  where tgrelid in (
---        'public.profiles'::regclass,
---        'public.customers'::regclass,
---        'public.transactions'::regclass
---        )
---    and not tgisinternal;

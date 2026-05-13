@@ -1,8 +1,5 @@
-// repo/public/assets/qr-token.js
-// Genera un qr_token da 32 caratteri base32 (alfabeto A-Z 2-7).
-// 160 bit di entropia (32 byte * 5 bit usati per byte).
-// UNIQUE constraint a livello DB protegge da collisioni teoriche
-// (probabilita' su 1000 customers ~ 0).
+// 32 char base32 A-Z 2-7 = 160 bit di entropia. UNIQUE constraint DB
+// protegge da collisioni teoriche.
 (function () {
   var ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   window.generateQrToken = function () {

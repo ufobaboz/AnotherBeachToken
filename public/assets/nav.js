@@ -1,38 +1,22 @@
-// repo/public/assets/nav.js
-// Componente Alpine globale "appNav": topbar di navigazione condivisa.
-// Dipende da window.Auth (getRole, signOut) e window.Strings (label nav).
-//
-// Uso nelle pagine:
-//   <nav class="app-nav" x-data="appNav" x-init="init()">
-//     <h1 x-text="t.<page>.title"></h1>
-//     <div class="nav-actions">
-//       <template x-for="item in items" :key="item.path">
-//         <a class="btn btn--ghost" :class="item.isCurrent ? 'btn--current' : ''"
-//            :href="item.path" x-text="item.label"></a>
-//       </template>
-//       <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
-//     </div>
-//   </nav>
-//
-// La visibilita' per ruolo e' decisa qui via NAV_ITEMS sotto.
-// Su viewport < 720px le voci .nav-actions vengono nascoste via CSS e
-// init() inietta <sl-icon-button class="nav-burger"> + <sl-drawer class="nav-drawer">
-// con le stesse voci dentro un <sl-menu>. Markup invariato nelle pagine.
+// Su viewport < 720px le voci .nav-actions sono nascoste via CSS e init()
+// inietta sl-icon-button + sl-drawer con le stesse voci dentro sl-menu.
 
 (function () {
-  // Path canonici delle pagine raggiungibili dalla nav.
-  // Ogni voce dichiara il ruolo minimo richiesto:
-  //   operator -> visibile a operator, admin, super_admin
-  //   admin    -> visibile a admin, super_admin
-  //   super_admin -> visibile solo a super_admin
   var NAV_ITEMS = [
-    { key: 'customers', path: '/customers',    minRole: 'operator'    },
-    { key: 'scan',      path: '/scan',         minRole: 'operator'    },
-    { key: 'users',     path: '/admin/users',  minRole: 'admin'       },
-    { key: 'season',    path: '/admin/season', minRole: 'super_admin' },
-    { key: 'probe',     path: '/probe',        minRole: 'super_admin' },
-    { key: 'profile',   path: '/me',           minRole: 'operator'    }
+    { key: 'customers',   path: '/customers',          minRole: 'operator'    },
+    { key: 'scan',        path: '/scan',               minRole: 'operator'    },
+    { key: 'users',       path: '/admin/users',        minRole: 'admin'       },
+    { key: 'reports',     path: '/admin/reports',      minRole: 'admin'       },
+    { key: 'resetSeason', path: '/admin/reset-season', minRole: 'super_admin' },
+    { key: 'probe',       path: '/probe',              minRole: 'super_admin' },
+    { key: 'profile',     path: '/me',                 minRole: 'operator'    }
   ];
+
+  // Manuale fuori da NAV_ITEMS: x-for la renderizzerebbe prima dell'install
+  // button iniettato da pwa.js. Iniettata a runtime dopo pwa.js.
+  var MANUALE_KEY = 'manuale';
+  var MANUALE_PATH = '/manuale';
+  var MANUALE_MIN_ROLE = 'admin';
 
   var ROLE_RANK = { operator: 1, admin: 2, super_admin: 3 };
 
@@ -42,8 +26,8 @@
   var basePathPromise = null;
 
   function ensureBasePath() {
-    // Default di shoelace: scarica le icone da https://shoelace.style/assets/icons/.
-    // Siamo self-hosted: rimappiamo a /vendor/shoelace/.../assets/icons.
+    // Shoelace di default scarica icone da shoelace.style/assets/icons:
+    // self-hosted, rimappiamo a /vendor/shoelace/.../assets/icons.
     if (!basePathPromise) {
       basePathPromise = import(SL_ROOT + '/utilities/base-path.js')
         .then(function (mod) { mod.setBasePath(SL_ROOT); });
@@ -53,7 +37,6 @@
 
   function isCurrentPath(itemPath, currentPath) {
     if (currentPath === itemPath) return true;
-    // Sotto-pagine: /customers/* attive su /customers; /admin/users/* idem.
     if (itemPath !== '/' && currentPath.indexOf(itemPath + '/') === 0) return true;
     return false;
   }
@@ -92,12 +75,49 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
+  // pwa.js puo' iniettare l'install button prima o dopo alpine:init (ordine
+  // indeterminato). Inseriamo Manuale prima del logout e usiamo un
+  // MutationObserver per riordinare se install arriva dopo. Ordine finale
+  // atteso: items, install, manuale, logout.
+  function tryReorderAfterInstall(navActions, manuale) {
+    var install = navActions.querySelector('[data-pwa-install]');
+    if (!install) return false;
+    if (install.nextSibling !== manuale) {
+      navActions.insertBefore(manuale, install.nextSibling);
+    }
+    return true;
+  }
+  function injectManualeLink(navEl, role, label, currentPath) {
+    if (!navEl) return;
+    var userRank = ROLE_RANK[role] || 0;
+    if (userRank < ROLE_RANK[MANUALE_MIN_ROLE]) return;
+    var navActions = navEl.querySelector('.nav-actions');
+    if (!navActions) return;
+    if (navActions.querySelector('[data-manuale-link]')) return;
+    var a = document.createElement('a');
+    a.className = 'btn btn--ghost' + (currentPath === MANUALE_PATH ? ' btn--current' : '');
+    a.setAttribute('href', MANUALE_PATH);
+    a.setAttribute('data-manuale-link', '1');
+    a.textContent = label;
+    var logout = navActions.querySelector('button.btn--outline');
+    if (logout) navActions.insertBefore(a, logout);
+    else navActions.appendChild(a);
+    if (!tryReorderAfterInstall(navActions, a)) {
+      var obs = new MutationObserver(function () {
+        if (tryReorderAfterInstall(navActions, a)) {
+          obs.disconnect();
+        }
+      });
+      obs.observe(navActions, { childList: true });
+      setTimeout(function () { obs.disconnect(); }, 5000);
+    }
+  }
+
   function bindItemNavigation(mi, drawer, onSelect) {
-    // Ascoltiamo direttamente il click sull'host sl-menu-item, NON sl-select
-    // su sl-menu: sl-menu.handleClick filtra via composedPath con regole
-    // shadow-DOM specifiche che falliscono con nodi creati programmaticamente
-    // (es. role applicato solo nel watcher Lit waitUntilFirstUpdate:true).
-    // Il click sull'host bubbla sempre e basta per la nostra UX.
+    // Click sull'host sl-menu-item, NON sl-select su sl-menu: sl-menu.handleClick
+    // filtra via composedPath con regole shadow-DOM che falliscono per nodi
+    // creati programmaticamente (role applicato solo nel watcher Lit
+    // waitUntilFirstUpdate:true).
     mi.addEventListener('click', function (ev) {
       ev.stopPropagation();
       try { drawer.hide(); } catch (_e) { /* no-op */ }
@@ -105,8 +125,7 @@
     });
   }
 
-  function buildDrawerContent(drawer, items, logoutLabel, onLogout) {
-    // Wipe vecchio contenuto (in caso di re-init).
+  function buildDrawerContent(drawer, items, logoutLabel, onLogout, role, manualeLabel) {
     removeAllChildren(drawer);
     var menu = document.createElement('sl-menu');
     menu.className = 'nav-drawer-menu';
@@ -121,6 +140,26 @@
     if (items.length > 0) {
       menu.appendChild(document.createElement('sl-divider'));
     }
+    if (window.PwaInstall && !window.PwaInstall.isStandalone()) {
+      var installItem = document.createElement('sl-menu-item');
+      installItem.setAttribute('value', '__install');
+      installItem.setAttribute('data-pwa-install-drawer', '1');
+      installItem.textContent = window.PwaInstall.installLabel();
+      bindItemNavigation(installItem, drawer, function () { window.PwaInstall.triggerInstall(); });
+      menu.appendChild(installItem);
+      window.PwaInstall.onInstalled(function () {
+        try { installItem.remove(); } catch (_e) { /* no-op */ }
+      });
+    }
+    var userRank = ROLE_RANK[role] || 0;
+    if (userRank >= ROLE_RANK[MANUALE_MIN_ROLE]) {
+      var manualeItem = document.createElement('sl-menu-item');
+      manualeItem.setAttribute('value', MANUALE_PATH);
+      manualeItem.setAttribute('data-manuale-drawer', '1');
+      manualeItem.textContent = manualeLabel || 'Manuale';
+      bindItemNavigation(manualeItem, drawer, function () { window.location.href = MANUALE_PATH; });
+      menu.appendChild(manualeItem);
+    }
     var logoutItem = document.createElement('sl-menu-item');
     logoutItem.setAttribute('value', '__logout');
     logoutItem.textContent = logoutLabel;
@@ -130,7 +169,7 @@
     return menu;
   }
 
-  async function setupBurger(navEl, items, menuLabel, logoutLabel) {
+  async function setupBurger(navEl, items, menuLabel, logoutLabel, role, manualeLabel) {
     if (!navEl) return;
     await Promise.all([ensureBasePath(), loadBurgerComponents()]);
 
@@ -155,7 +194,7 @@
     }
 
     var onLogout = function () { window.Auth.signOut(); };
-    buildDrawerContent(drawer, items, logoutLabel, onLogout);
+    buildDrawerContent(drawer, items, logoutLabel, onLogout, role, manualeLabel);
 
     if (isNew) {
       burger.addEventListener('click', function () {
@@ -177,7 +216,9 @@
           this.items = visibleItems(role, window.location.pathname);
           var menuLabel = (this.t && this.t.nav && this.t.nav.menu) || 'Menu';
           var logoutLabel = (this.t && this.t.logout) || 'Esci';
-          setupBurger(this.$el, this.items, menuLabel, logoutLabel)
+          var manualeLabel = (this.t && this.t.nav && this.t.nav.manuale) || 'Manuale';
+          injectManualeLink(this.$el, role, manualeLabel, window.location.pathname);
+          setupBurger(this.$el, this.items, menuLabel, logoutLabel, role, manualeLabel)
             .catch(function (err) { console.warn('[nav] burger setup failed', err); });
         },
         async logout() { await window.Auth.signOut(); }
@@ -185,7 +226,6 @@
     });
   });
 
-  // Esposto per test/debug. Non usato direttamente dalle pagine.
   window.AppNav = {
     visibleItems: visibleItems,
     NAV_ITEMS: NAV_ITEMS

@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.reset-season]
 verify_jwt = false
+
+[functions.e2e-cleanup]
+verify_jwt = false

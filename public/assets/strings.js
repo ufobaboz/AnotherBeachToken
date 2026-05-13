@@ -1,19 +1,18 @@
-// repo/public/assets/strings.js
-// Copy italiani per le pagine. ASCII puro: niente em-dash, ellissi,
-// apostrofi tipografici. Le pagine consumano window.Strings.<section>.<key>.
+// ASCII puro: niente em-dash, ellissi, apostrofi tipografici.
 window.Strings = {
   nav: {
     customers: 'Clienti',
     scan: 'Scan',
     users: 'Utenti',
-    season: 'Stagione',
+    reports: 'Report',
+    manuale: 'Manuale',
+    resetSeason: 'Reset stagione',
     probe: 'Probe',
     profile: 'Profilo',
-    backupR2: 'Backup R2',
     menu: 'Menu'
   },
   app: {
-    title: 'Customer QR Tracker'
+    title: 'Another Beach Token'
   },
   login: {
     title: 'Accedi',
@@ -31,11 +30,18 @@ window.Strings = {
     title: 'Clienti',
     empty: 'Nessun cliente registrato. Clicca "Nuovo cliente" per iniziare.',
     emptySearch: 'Nessun cliente corrisponde alla ricerca.',
+    emptyOpen: 'Nessun cliente con conto aperto. Clicca "Mostra tutti" per vedere l\'intero elenco.',
     newButton: '+ Nuovo cliente',
-    searchPlaceholder: 'Cerca per nome, cognome o telefono',
+    searchPlaceholder: 'Cerca nome o numero',
+    showAll: 'Mostra tutti',
+    showOpen: 'Solo conti aperti',
     columnName: 'Nome',
+    columnBalance: 'Conto',
     columnPhone: 'Telefono',
-    columnCreatedAt: 'Registrato il'
+    columnCreatedAt: 'Registrato il',
+    pagePrev: 'Precedente',
+    pageNext: 'Successiva',
+    pageInfo: function (page, total) { return 'Pagina ' + page + ' di ' + total; }
   },
   customerNew: {
     title: 'Nuovo cliente',
@@ -60,10 +66,7 @@ window.Strings = {
     createdAt: 'Registrato il',
     qrAlt: 'QR code del cliente',
     downloadQr: 'Scarica QR',
-    sendQrWhatsApp: 'Invia QR su WhatsApp',
-    qrWhatsAppText: function (firstName, publicUrl) {
-      return 'Ciao ' + firstName + ', ecco il tuo QR personale. Mostralo alla cassa quando consumi: ' + publicUrl;
-    },
+    sendWhatsApp: 'Invia su WhatsApp',
     ctaCheckout: 'Chiudi conto',
     deleteButton: 'Archivia cliente',
     deleteDialogTitle: 'Conferma archiviazione',
@@ -90,7 +93,7 @@ window.Strings = {
     },
     balance: {
       label: 'Conto aperto',
-      sendWhatsApp: 'Invia conto su WhatsApp',
+      refresh: 'Aggiorna',
       whatsAppText: function (firstName, balanceFormatted, publicUrl) {
         return 'Ciao ' + firstName + ', il tuo conto aperto e\' ' + balanceFormatted + ' EUR. Visualizzalo qui: ' + publicUrl;
       }
@@ -119,7 +122,8 @@ window.Strings = {
     notFound: 'QR non trovato.',
     qrAlt: 'Il tuo QR code',
     openBalanceLabel: 'Conto aperto',
-    currency: 'EUR'
+    currency: 'EUR',
+    refresh: 'Aggiorna'
   },
   paymentMethods: {
     cash: 'Contanti',
@@ -136,11 +140,12 @@ window.Strings = {
     balanceLabel: 'Conto aperto',
     methodLabel: 'Metodo di pagamento',
     emptyBalanceCta: 'Nessun importo da pagare',
-    confirmCta: function (amount, methodLabel) {
-      return 'Conferma chiusura - ' + amount + ' EUR via ' + methodLabel;
-    },
+    confirmAndArchiveCta: 'Chiudi conto e archivia',
+    confirmPartialCta: 'Chiusura parziale',
     submitting: 'Chiusura in corso...',
+    submittingArchive: 'Chiusura e archiviazione in corso...',
     error: 'Errore in fase di chiusura. Riprova.',
+    archiveError: 'Conto chiuso, ma errore in fase di archiviazione cliente.',
     partial: 'Chiusura parziale: ricarica la pagina e verifica.',
     raceAlert: function (n) {
       return 'Sono arrivate ' + n + ' nuove transazioni mentre eri qui. Apri di nuovo la chiusura per saldarle.';
@@ -150,9 +155,10 @@ window.Strings = {
   adminUsers: {
     title: 'Gestione utenti',
     backToCustomers: 'Torna alla lista clienti',
-    newOperatorButton: '+ Nuovo operator',
+    newOperatorButton: '+ Nuovo operatore',
     newAdminButton: '+ Nuovo admin',
-    showDeleted: 'Mostra cancellati',
+    showAll: 'Mostra tutti',
+    showActiveOnly: 'Solo attivi',
     empty: 'Nessun utente registrato.',
     columnName: 'Nome',
     columnRole: 'Ruolo',
@@ -162,12 +168,12 @@ window.Strings = {
     roleAdmin: 'admin',
     roleSuperAdmin: 'super_admin',
     deletedBadge: function (date) {
-      return 'CANCELLATO ' + date;
+      return 'DISATTIVATO ' + date;
     },
     neverLogged: 'mai',
     editButton: 'Modifica',
-    resetPwButton: 'Reset password',
-    deleteButton: 'Cancella',
+    resetPwButton: 'Reset pw',
+    deleteButton: 'Disattiva',
     changeRoleButton: 'Cambia ruolo',
     cancel: 'Annulla',
     email: 'Email',
@@ -208,14 +214,14 @@ window.Strings = {
     resetPwSuccess: 'Password aggiornata. Comunicala via canale fuori app.',
     resetPwError: 'Errore in fase di reset. Riprova.',
     resetPwForbiddenTarget: 'Solo super_admin puo\' resettare la password di un admin.',
-    deleteTitle: 'Conferma cancellazione',
+    deleteTitle: 'Conferma disattivazione',
     deleteBody: function (firstName, lastName, role) {
-      return 'Cancellare ' + role + ' ' + firstName + ' ' + lastName + '? '
+      return 'Disattivare ' + role + ' ' + firstName + ' ' + lastName + '? '
            + role + ' non potra\' piu\' loggarsi. Reversibile solo via SQL editor da super_admin.';
     },
-    deleteConfirm: 'Cancella',
-    deleteError: 'Errore in fase di cancellazione. Riprova.',
-    deleteForbiddenTarget: 'Solo super_admin puo\' cancellare un admin.',
+    deleteConfirm: 'Disattiva',
+    deleteError: 'Errore in fase di disattivazione. Riprova.',
+    deleteForbiddenTarget: 'Solo super_admin puo\' disattivare un admin.',
     changeRoleTitle: 'Cambia ruolo',
     changeRoleBody: function (firstName, lastName, fromRole, toRole) {
       if (toRole === 'admin') {
@@ -269,20 +275,51 @@ window.Strings = {
     changePasswordError: 'Errore in fase di cambio password. Riprova.'
   },
   logout: 'Esci',
-  adminSeason: {
-    title: 'Fine stagione',
+  adminReports: {
+    title: 'Report',
     backToCustomers: 'Torna alla lista clienti',
-    intro: 'Operazione di fine stagione. Scarica gli archivi prima di resettare.',
-    archiveTitle: 'Archivio',
-    archiveHint: 'Tutte le righe (incluse cancellate). Date in fuso Europe/Rome. Salva i file nel tuo archivio personale.',
-    downloadCustomers: 'Scarica customers.csv',
-    downloadTransactions: 'Scarica transactions.csv',
-    downloadProfiles: 'Scarica profiles.csv',
-    downloadingCustomers: 'Scaricando customers...',
-    downloadingTransactions: 'Scaricando transactions...',
-    downloadingProfiles: 'Scaricando profiles...',
-    resetTitle: 'Reset stagione',
-    resetIntro: 'Cancella DEFINITIVAMENTE tutti i clienti e tutte le transazioni. I profili (operatori) restano intatti.',
+    intro: 'Scarica i due report della stagione corrente in CSV.',
+    exportsTitle: 'Esportazioni',
+    exportsHint: 'Tutte le righe (incluse cancellate). Date in fuso Europe/Rome.',
+    exportAggregate: 'Esporta aggregato per cliente',
+    downloadingAggregate: 'Esportazione aggregato...',
+    exportDetails: 'Esporta dettaglio transazioni',
+    downloadingDetails: 'Esportazione dettaglio...',
+    downloadError: 'Errore durante l\'esportazione. Vedi console per i dettagli.',
+    rowsCount: function (n) { return n + ' righe'; },
+    aggregateColumns: [
+      'Cliente', 'Email', 'Telefono', 'Note cliente',
+      'Data registrazione', 'Data cancellazione cliente',
+      'Numero transazioni', 'Numero addebiti', 'Numero storni',
+      'Totale addebiti (EUR)', 'Totale storni (EUR)',
+      'Saldo aperto (EUR)', 'Totale pagato (EUR)',
+      'Ultima transazione'
+    ],
+    aggregateColumnKeys: [
+      'cliente', 'email', 'telefono', 'note_cliente',
+      'data_registrazione', 'data_cancellazione_cliente',
+      'numero_transazioni', 'numero_addebiti', 'numero_storni',
+      'totale_addebiti_eur', 'totale_storni_eur',
+      'saldo_aperto_eur', 'totale_pagato_eur',
+      'ultima_transazione'
+    ],
+    detailColumns: [
+      'Tipo', 'Importo (EUR)', 'Note',
+      'Data registrazione', 'Data cancellazione',
+      'Operatore', 'Pagato', 'Data pagamento', 'Metodo pagamento',
+      'Incassato da', 'Cliente', 'Telefono cliente'
+    ],
+    detailColumnKeys: [
+      'tipo', 'importo_eur', 'note',
+      'data_registrazione', 'data_cancellazione',
+      'operatore', 'pagato', 'data_pagamento', 'metodo_pagamento',
+      'incassato_da', 'cliente', 'telefono_cliente'
+    ]
+  },
+  adminResetSeason: {
+    title: 'Reset stagione',
+    backToCustomers: 'Torna alla lista clienti',
+    intro: 'Cancella DEFINITIVAMENTE tutti i clienti e tutte le transazioni. I profili (operatori) restano intatti. Scarica gli archivi prima di procedere.',
     resetButton: 'Reset stagione',
     resetDialogTitle: 'Reset stagione',
     resetDialogBody: 'Cancellazione irreversibile.',
@@ -293,9 +330,7 @@ window.Strings = {
     confirmReset: 'Conferma reset',
     resetting: 'Reset in corso...',
     resetSuccess: 'Stagione resettata. Customers e transactions sono ora vuote.',
-    resetError: 'Errore durante il reset. Vedi console per i dettagli.',
-    downloadError: 'Errore durante il download. Vedi console per i dettagli.',
-    rowsCount: function (n) { return n + ' righe'; }
+    resetError: 'Errore durante il reset. Vedi console per i dettagli.'
   },
   probe: {
     title: 'Probe diagnostico',
@@ -303,14 +338,28 @@ window.Strings = {
     statusFail: 'FAIL',
     statusNa: 'n/a',
     refreshHint: 'Ricarica la pagina per ri-eseguire i check.',
-    openBalanceLabel: 'Conto aperto totale'
+    openBalanceLabel: 'Conto aperto totale',
+    backupTitle: 'Backup giornaliero R2',
+    backupNotConfigured: 'Daily backup non applicabile in questo ambiente (PRD only)',
+    backupNone: 'Nessun backup trovato in daily/',
+    backupIncomplete: function (date, found, expected) {
+      return 'Backup ' + date + ' incompleto: ' + found + '/' + expected + ' file';
+    },
+    backupStale: function (ageH, date) {
+      return 'Ultimo backup ' + ageH + 'h fa (' + date + ')';
+    },
+    backupOk: function (date, ageH, found, expected) {
+      return date + ' (' + ageH + 'h fa, ' + found + '/' + expected + ' file)';
+    }
   },
   pwa: {
     installLabel: 'Installa app',
-    iosTitle: 'Aggiungi a Home',
+    iosTitle: 'Aggiungi Another Beach Token a Home',
     iosStep1: '1. Tocca il pulsante Condividi in basso (quadrato con freccia verso l\'alto).',
     iosStep2: '2. Scorri il menu e scegli "Aggiungi alla schermata Home".',
     iosStep3: '3. Conferma con "Aggiungi" in alto a destra.',
-    iosClose: 'Ho capito'
+    iosClose: 'Ho capito',
+    genericTitle: 'Installa Another Beach Token',
+    genericBody: 'Il browser non ha proposto l\'installazione automatica. Apri il menu del browser e cerca la voce "Installa app" o "Aggiungi a schermata Home". Su desktop Chrome l\'icona di installazione compare nella barra degli indirizzi.'
   }
 };

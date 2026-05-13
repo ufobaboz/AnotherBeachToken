@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ============================================================
-# build.sh -- genera public/assets/config.js dalle env vars.
-# Eseguito da Cloudflare Pages al build.
-# ============================================================
 set -euo pipefail
 
 : "${SUPABASE_URL:?SUPABASE_URL non impostata: configura le env vars su Cloudflare Pages.}"
@@ -11,7 +7,7 @@ set -euo pipefail
 mkdir -p public/assets
 
 cat > public/assets/config.js <<EOF
-// Generato automaticamente da build.sh. Non committare.
+// Generato da build.sh. Non committare.
 window.APP_CONFIG = {
   SUPABASE_URL: '${SUPABASE_URL}',
   SUPABASE_ANON_KEY: '${SUPABASE_ANON_KEY}'

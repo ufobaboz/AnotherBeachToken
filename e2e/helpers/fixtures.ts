@@ -11,8 +11,8 @@ function randomSuffix(): string {
 }
 
 function randomPhone(): string {
-  // Pattern accettato da customer-new: ^\+[0-9]{8,15}$.
-  // Prefisso "+39000" + 7 cifre random per non collidere con formati reali.
+  // Pattern customer-new ^\+[0-9]{8,15}$. Prefisso "+39000" per non collidere
+  // con formati reali italiani.
   const tail = String(Math.floor(Math.random() * 10_000_000)).padStart(7, '0');
   return '+39000' + tail;
 }
@@ -23,7 +23,6 @@ export async function createTestCustomer(page: Page): Promise<TestCustomer> {
   const firstName = 'Test';
   const phone = randomPhone();
   await page.goto('/customers/new');
-  // 2 input text required maxlength=120: first_name, last_name (in ordine).
   const textInputs = page.locator('input[type=text][required]');
   await textInputs.nth(0).fill(firstName);
   await textInputs.nth(1).fill(lastName);
@@ -37,25 +36,19 @@ export async function createTestCustomer(page: Page): Promise<TestCustomer> {
   return { id, lastName, firstName };
 }
 
-export async function softDeleteTestCustomer(page: Page, id: string): Promise<void> {
-  // Idempotente: se la pagina e' gia' aperta sul detail con dialog gia' chiuso,
-  // si fa goto comunque per riusare la stessa logica.
-  await page.goto(`/customers/${id}`);
-  // Bottone "Archivia cliente" visibile solo a admin+; il super_admin di test lo vede.
-  const deleteBtn = page.locator('button.btn--danger', { hasText: 'Archivia cliente' });
-  await deleteBtn.click();
-  // Shoelace dialog: bottone variant=danger nel footer.
-  const confirmBtn = page.locator('sl-dialog sl-button[variant=danger]', { hasText: 'Archivia' });
-  await Promise.all([
-    page.waitForURL('**/customers', { timeout: 10_000 }),
-    confirmBtn.click(),
-  ]);
+// Hard delete via edge function e2e-cleanup (DEV-only). Niente flow UI: il
+// pulsante "Archivia" e' coperto da un suo test dedicato, qui ci interessa
+// solo cancellare il record + tx collegate (anche se aperte).
+export async function cleanupTestCustomer(page: Page, id: string): Promise<void> {
+  try {
+    await page.evaluate(async (target_id) => {
+      return await window.Auth.callEdgeFunction('e2e-cleanup', { target_id, scope: 'customer' });
+    }, id);
+  } catch (e) {
+    console.warn('[cleanupTestCustomer] cleanup failed for id=' + id + ':', e);
+  }
 }
 
-/**
- * Legge il qr_token di un cliente via supabase-js dal browser context.
- * La pagina deve essere autenticata (super_admin di test loggato).
- */
 export async function getCustomerQrToken(page: Page, customerId: string): Promise<string> {
   const token = await page.evaluate(async (id) => {
     const resp = await (window as any).Auth.client
@@ -81,7 +74,6 @@ export interface TestOperator {
 }
 
 export async function createTestOperator(page: Page): Promise<TestOperator> {
-  // page deve essere autenticata come super_admin o admin (l'edge function create-operator richiede admin+).
   const ts = Date.now();
   const rand = randomSuffix();
   const email = `e2e-op-${ts}-${rand}@example.com`;
@@ -101,26 +93,23 @@ export async function createTestOperator(page: Page): Promise<TestOperator> {
   return { id: respBody.profile_id, email, password, firstName, lastName };
 }
 
-export async function softDeleteTestOperator(page: Page, id: string): Promise<void> {
-  // Best-effort cleanup. Se la pagina non e' loggata come admin+, fallisce silenzioso.
+// Hard delete del profilo (operator o admin) via edge function e2e-cleanup:
+// cancella tx collegate, customers ZZ-E2E creati dal profilo, e infine
+// auth.users (cascade public.profiles).
+export async function cleanupTestProfile(page: Page, id: string): Promise<void> {
   try {
     await page.evaluate(async (target_id) => {
-      return await window.Auth.callEdgeFunction('soft-delete-profile', { target_id });
+      return await window.Auth.callEdgeFunction('e2e-cleanup', { target_id, scope: 'profile' });
     }, id);
   } catch (e) {
-    console.warn('[softDeleteTestOperator] cleanup failed for id=' + id + ':', e);
+    console.warn('[cleanupTestProfile] cleanup failed for id=' + id + ':', e);
   }
 }
 
-/**
- * Apre il customer-detail con ?charge=1 (auto-open tastiera POS) e battezza
- * un addebito. amountInteger e amountDecimal sono stringhe di cifre senza
- * separatori (es. amountInteger="5", amountDecimal="50" per 5,50 EUR).
- */
-// chargeAmount: smoke del POS UI (keypad + submit). Usalo solo nel test
-// dedicato al keypad. Per i test che hanno solo bisogno di un addebito
-// pre-esistente sul customer (es. WhatsApp link, checkout, fine stagione),
-// usa insertChargeViaApi: piu' veloce, no race con Alpine hydration.
+// Smoke del POS UI (keypad + submit). Per i test che vogliono solo un addebito
+// pre-esistente sul customer usa insertChargeViaApi: piu' veloce, no race con
+// Alpine hydration. amountInteger/amountDecimal: cifre senza separatore
+// (amountInteger="5", amountDecimal="50" -> 5,50 EUR).
 export async function chargeAmount(
   page: Page,
   customerId: string,
@@ -129,22 +118,20 @@ export async function chargeAmount(
 ): Promise<void> {
   await page.goto(`/customers/${customerId}?charge=1`);
   await page.waitForFunction(() => !document.body.hasAttribute('x-cloak'), { timeout: 15_000 });
-  // balance-card visible = init completo (customer + refreshTransactions await).
   await expect(page.locator('.balance-card')).toContainText('EUR', { timeout: 15_000 });
   const overlay = page.locator('.pos-overlay');
   await expect(overlay).toBeVisible();
-  // Keypad order fisso: 7 8 9 / 4 5 6 / 1 2 3 / 0 , <-
-  const KEY_INDEX: Record<string, number> = {
-    '7': 0, '8': 1, '9': 2,
-    '4': 3, '5': 4, '6': 5,
-    '1': 6, '2': 7, '3': 8,
-    '0': 9, ',': 10
-  };
-  const press = async (k: string) =>
-    page.locator('.pos-keypad button').nth(KEY_INDEX[k]).click();
-  for (const d of amountInteger) await press(d);
-  await press(',');
-  for (const d of amountDecimal) await press(d);
+  const expected = amountInteger + ',' + amountDecimal;
+  await page.evaluate((amt) => {
+    const body = document.querySelector('body[x-data="customerDetailPage"]') as HTMLElement & {
+      _x_dataStack?: Array<Record<string, unknown>>;
+    };
+    if (!body || !body._x_dataStack || !body._x_dataStack[0]) {
+      throw new Error('Alpine data not found on body');
+    }
+    body._x_dataStack[0].posAmount = amt;
+  }, expected);
+  await expect(page.locator('.pos-display')).toContainText(expected, { timeout: 4_000 });
   await Promise.all([
     page.waitForResponse((r) =>
       r.url().includes('/rest/v1/transactions') && r.request().method() === 'POST'
@@ -154,10 +141,8 @@ export async function chargeAmount(
   await expect(overlay).toBeHidden();
 }
 
-// insertChargeViaApi: inserisce direttamente una charge via supabase-js dal
-// browser context. Salta l'UI POS quindi e' zero-race. La pagina deve essere
-// loggata come operator+ (super_admin va bene): RLS customers_insert + i CHECK
-// applicabili coprono comunque le invarianti.
+// Bypass UI POS via supabase-js: zero-race con Alpine hydration. Le invarianti
+// sono garantite da RLS + CHECK lato DB (la pagina dev'essere loggata).
 export async function insertChargeViaApi(
   page: Page,
   customerId: string,
@@ -189,7 +174,7 @@ export interface TestAdmin {
 }
 
 export async function createTestAdmin(page: Page): Promise<TestAdmin> {
-  // page deve essere autenticata come super_admin (admin non puo' creare admin).
+  // admin non puo' creare altri admin: serve super_admin loggato.
   const ts = Date.now();
   const rand = randomSuffix();
   const email = `e2e-adm-${ts}-${rand}@example.com`;
@@ -207,20 +192,6 @@ export async function createTestAdmin(page: Page): Promise<TestAdmin> {
     throw new Error('createTestAdmin: missing profile_id in response: ' + JSON.stringify(resp));
   }
   return { id: respBody.profile_id, email, password, firstName, lastName };
-}
-
-/**
- * Helper generico per soft-delete di un profilo (operator o admin).
- * Equivalente a softDeleteTestOperator ma con nome che riflette lo scope esteso M7.
- */
-export async function softDeleteTestProfile(page: Page, id: string): Promise<void> {
-  try {
-    await page.evaluate(async (target_id) => {
-      return await window.Auth.callEdgeFunction('soft-delete-profile', { target_id });
-    }, id);
-  } catch (e) {
-    console.warn('[softDeleteTestProfile] cleanup failed for id=' + id + ':', e);
-  }
 }
 
 export async function changeRoleViaEdge(

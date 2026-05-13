@@ -1,13 +1,13 @@
 {
-  "name": "Customer QR Tracker",
+  "name": "AnotherBeachToken",
   "short_name": "ABT",
   "description": "Gestione pagamenti differiti del campeggio: scansione QR cliente, addebiti, storni, chiusura conto.",
   "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#145d2f",
-  "background_color": "#145d2f",
+  "theme_color": "#1f8a3e",
+  "background_color": "#fafaf8",
   "lang": "it",
   "icons": [
     {

@@ -1,8 +1,3 @@
-// repo/supabase/functions/create-operator/index.ts
-// Edge function Deno. Chiamante admin+ via JWT. Crea utente in auth.users
-// (email + password, email_confirm=true) + INSERT profiles role='operator'.
-// Rollback compensativo (auth.admin.deleteUser) se l'INSERT profiles fallisce.
-
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -140,7 +135,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse(errorBody('forbidden_role', 'Solo super_admin puo\' creare admin.'), 403);
   }
 
-  // 1. createUser
   const createResp = await serviceClient.auth.admin.createUser({
     email,
     password,
@@ -148,8 +142,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
   if (createResp.error) {
     const msg = (createResp.error.message || '').toLowerCase();
-    // Supabase Auth Admin API non espone un error code strutturato per email duplicata:
-    // rileviamo via string match sul messaggio. Aggiornare se l'SDK introduce un campo dedicato.
+    // Supabase Auth Admin API non espone un error code per email duplicata:
+    // string match sul message, aggiornare se l'SDK introduce un campo dedicato.
     if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
       console.log(JSON.stringify({ event: 'create-operator', status: 409, error: 'email_already_exists', caller_id: caller.userId, latency_ms: Date.now() - startedAt }));
       return jsonResponse(errorBody('email_already_exists', 'Email gia\' registrata.'), 409);
@@ -167,7 +161,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse(errorBody('unknown_error', 'createUser non ha restituito un id.'), 500);
   }
 
-  // 2. INSERT profiles
   const insertResp = await serviceClient.from('profiles').insert({
     id: newUserId,
     first_name: firstName,
@@ -178,7 +171,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
 
   if (insertResp.error) {
-    // Rollback compensativo
     const delResp = await serviceClient.auth.admin.deleteUser(newUserId);
     if (delResp.error) {
       console.error(JSON.stringify({

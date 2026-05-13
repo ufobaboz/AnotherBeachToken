@@ -1,11 +1,3 @@
-// repo/supabase/functions/auth-ping/index.ts
-// Edge function Deno per Supabase. Verify JWT (Supabase verify_jwt=true di
-// default), opzionalmente aggiorna profiles.last_login_at (?stamp=true),
-// ritorna { user_id, role, stamp_applied }.
-//
-// Service role key e' iniettata di default da Supabase su tutte le edge
-// function come env var SUPABASE_SERVICE_ROLE_KEY.
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const CORS_HEADERS: Record<string, string> = {
