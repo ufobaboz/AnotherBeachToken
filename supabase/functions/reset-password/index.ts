@@ -1,6 +1,3 @@
-// repo/supabase/functions/reset-password/index.ts
-// auth.admin.updateUserById(target, { password }). Chiamante admin+,
-// target operator/admin (admin per chiamante super_admin only).
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const CORS_HEADERS: Record<string, string> = {

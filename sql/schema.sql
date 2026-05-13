@@ -1,21 +1,6 @@
--- ============================================================
--- schema.sql - Customer QR Tracker
--- ============================================================
--- Schema idempotente per Supabase (PostgreSQL 17.x).
--- Da applicare per primo, prima di rls.sql. Vedi sql/README.md
--- per la procedura completa di setup del database.
--- ============================================================
-
--- ------------------------------------------------------------
--- Estensioni
--- ------------------------------------------------------------
+-- Schema idempotente. Applicare prima di rls.sql.
 
 create extension if not exists pgcrypto;
--- pgcrypto fornisce gen_random_uuid() per i default delle PK.
-
--- ------------------------------------------------------------
--- Enum
--- ------------------------------------------------------------
 
 do $$
 begin
@@ -38,13 +23,6 @@ begin
   end if;
 end $$;
 
--- ------------------------------------------------------------
--- profiles
--- ------------------------------------------------------------
--- Operatori dell'app. Relazione 1:1 con auth.users di Supabase.
--- L'auto-FK su last_modified_by_id e' gestita lato applicativo.
--- ------------------------------------------------------------
-
 create table if not exists public.profiles (
   id                    uuid primary key references auth.users(id) on delete cascade,
   first_name            text        not null,
@@ -58,14 +36,7 @@ create table if not exists public.profiles (
   deleted_at            timestamptz
 );
 
--- ------------------------------------------------------------
--- customers
--- ------------------------------------------------------------
--- Anagrafica dei clienti del villaggio. qr_token e' il segreto
--- mostrato come QR e via pagina pubblica. Format obbligatorio:
--- 32 caratteri base32 (A-Z, 2-7).
--- ------------------------------------------------------------
-
+-- qr_token: bearer secret mostrato come QR sulla pagina pubblica /qr/<token>.
 create table if not exists public.customers (
   id                    uuid primary key default gen_random_uuid(),
   qr_token              text        not null unique,
@@ -82,15 +53,7 @@ create table if not exists public.customers (
   constraint customers_qr_token_format check (qr_token ~ '^[A-Z2-7]{32}$')
 );
 
--- ------------------------------------------------------------
--- transactions
--- ------------------------------------------------------------
--- Addebiti e storni di un cliente. Concettualmente immutabili,
--- mutano solo per la chiusura conto (paid, paid_at,
--- payment_method, paid_by_id). reversal_of_id collega lo storno
--- alla charge che corregge.
--- ------------------------------------------------------------
-
+-- Concettualmente immutabili, mutano solo per la chiusura conto.
 create table if not exists public.transactions (
   id                    uuid primary key default gen_random_uuid(),
   customer_id           uuid        not null references public.customers(id) on delete restrict,
@@ -130,38 +93,20 @@ create table if not exists public.transactions (
     )
 );
 
--- ------------------------------------------------------------
--- Indici
--- ------------------------------------------------------------
--- Set minimale: un solo indice esplicito sulla FK piu' usata.
--- PK e UNIQUE creano gia' i propri indici impliciti.
--- Altri indici saranno aggiunti on-demand sulla base di query
--- lente osservate in produzione (pg_stat_statements).
--- ------------------------------------------------------------
+grant select, insert, update, delete on public.profiles     to authenticated, service_role;
+grant select, insert, update, delete on public.customers    to authenticated, service_role;
+grant select, insert, update, delete on public.transactions to authenticated, service_role;
 
+-- Indici on-demand: PK/UNIQUE creano i propri impliciti, qui solo la FK
+-- transactions(customer_id) per join hot path.
 create index if not exists transactions_customer_idx
   on public.transactions (customer_id);
 
--- ------------------------------------------------------------
--- RPC: get_customer_qr_info
--- ------------------------------------------------------------
--- Usata dalla pagina pubblica /qr/<token> per personalizzare il
--- saluto e mostrare il saldo aperto. SECURITY DEFINER: bypassa
--- RLS, ma espone solo first_name + open_balance. Il token funge
--- da bearer: chi lo conosce ha gia' accesso al QR. Nessun
--- leakage extra (no cognome/telefono/email/storico).
--- open_balance segue la formula di SPEC sez 4 (charge non pagate
--- meno reversal non pagati, escluso soft-deleted), arrotondato
--- a numeric(10,2). Per un cliente senza alcuna transactions:
--- open_balance = 0 (coalesce esplicito).
--- ------------------------------------------------------------
+-- SECURITY DEFINER: bypassa RLS, espone solo first_name + open_balance
+-- al portatore del token (gia' bearer del QR).
 
--- DROP esplicito prima del CREATE OR REPLACE: cambiare il
--- return type di una funzione esistente non e' supportato da
--- "create or replace function". Senza DROP, riapplicare lo
--- script su un DB con una versione precedente della RPC fallisce
--- con "ERROR: 42P13 cannot change return type". DROP IF EXISTS
--- mantiene l'idempotenza per nuove installazioni.
+-- DROP IF EXISTS prima del CREATE OR REPLACE: cambiare il return type su
+-- una function esistente da "ERROR: 42P13 cannot change return type".
 drop function if exists public.get_customer_qr_info(text);
 
 create or replace function public.get_customer_qr_info(p_token text)
@@ -171,11 +116,9 @@ security definer
 stable
 set search_path = public
 as $$
-  -- coalesce su entrambi gli addendi: sum FILTER restituisce NULL se
-  -- nessuna riga matcha il filtro. Senza il coalesce interno, un
-  -- cliente con sole charges aperte (no reversals) avrebbe
-  -- N - NULL = NULL, mascherato a 0 dal coalesce esterno -> saldo
-  -- errato. Migration: fix_get_customer_qr_info_null_handling.
+  -- coalesce interno su entrambi gli addendi: sum FILTER torna NULL se
+  -- nessuna riga matcha; senza, charges - NULL = NULL e il coalesce esterno
+  -- mascherebbe il bug a 0 invece del saldo reale.
   select c.first_name,
          coalesce(
            (select coalesce(sum(t.amount) filter (where t.type = 'charge'), 0)
@@ -194,12 +137,164 @@ $$;
 revoke all on function public.get_customer_qr_info(text) from public;
 grant execute on function public.get_customer_qr_info(text) to anon, authenticated;
 
--- ------------------------------------------------------------
--- Verifiche post-applicazione (opzionali, da eseguire a mano)
--- ------------------------------------------------------------
--- select typname from pg_type where typname in ('user_role','transaction_type','payment_method');
--- select tablename from pg_tables where schemaname='public' and tablename in ('profiles','customers','transactions');
--- select indexname from pg_indexes where schemaname='public' and tablename='transactions';
--- select * from public.get_customer_qr_info('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
--- atteso: 0 righe (token inesistente). Su un cliente reale:
--- 1 riga (first_name, open_balance). open_balance=0 se nessuna transaction.
+-- TRUNCATE multi-tabella ignora la FK ON DELETE RESTRICT perche' svuota
+-- entrambe nello stesso comando. profiles NON tocco: gli operator restano
+-- fra una stagione e l'altra. SECURITY DEFINER perche' TRUNCATE richiede
+-- ownership; mai esposto a anon/authenticated.
+
+drop function if exists public.reset_season();
+
+create or replace function public.reset_season()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  truncate table public.transactions, public.customers;
+$$;
+
+-- Postgres concede EXECUTE a PUBLIC su ogni nuova function. Revoke + grant
+-- esplicito a service_role: anon/authenticated ereditano da PUBLIC -> no EXECUTE.
+revoke execute on function public.reset_season() from public;
+grant  execute on function public.reset_season() to service_role;
+
+-- Header in italiano: deroga consapevole alle convenzioni di SPEC sez 3.
+-- Il report e' per contabile/audit, non re-import tecnico. Soft-deleted
+-- inclusi (sia customers che transactions) per coerenza col flusso utente.
+
+drop function if exists public.get_archive_aggregates();
+
+create or replace function public.get_archive_aggregates()
+returns table(
+  cliente                     text,
+  email                       text,
+  telefono                    text,
+  note_cliente                text,
+  data_registrazione          timestamptz,
+  data_cancellazione_cliente  timestamptz,
+  numero_transazioni          bigint,
+  numero_addebiti             bigint,
+  numero_storni               bigint,
+  totale_addebiti_eur         numeric,
+  totale_storni_eur           numeric,
+  saldo_aperto_eur            numeric,
+  totale_pagato_eur           numeric,
+  ultima_transazione          timestamptz
+)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if not public.is_admin_or_above() then
+    raise exception 'forbidden: only admin or super_admin can run get_archive_aggregates'
+      using errcode = '42501';
+  end if;
+
+  return query
+  select
+    c.first_name || ' ' || c.last_name,
+    c.email,
+    c.phone,
+    c.notes,
+    c.created_at,
+    c.deleted_at,
+    coalesce(agg.numero_transazioni, 0)::bigint,
+    coalesce(agg.numero_addebiti,    0)::bigint,
+    coalesce(agg.numero_storni,      0)::bigint,
+    coalesce(agg.totale_addebiti,    0)::numeric(10,2),
+    coalesce(agg.totale_storni,      0)::numeric(10,2),
+    coalesce(agg.saldo_aperto,       0)::numeric(10,2),
+    coalesce(agg.totale_pagato,      0)::numeric(10,2),
+    agg.ultima_transazione
+  from public.customers c
+  left join (
+    select
+      customer_id,
+      count(*)                                                  as numero_transazioni,
+      count(*) filter (where type = 'charge')                   as numero_addebiti,
+      count(*) filter (where type = 'reversal')                 as numero_storni,
+      coalesce(sum(amount) filter (where type = 'charge'),   0) as totale_addebiti,
+      coalesce(sum(amount) filter (where type = 'reversal'), 0) as totale_storni,
+      coalesce(sum(amount) filter (where type = 'charge'   and paid = false), 0)
+        - coalesce(sum(amount) filter (where type = 'reversal' and paid = false), 0)
+                                                                as saldo_aperto,
+      coalesce(sum(amount) filter (where type = 'charge'   and paid = true), 0)
+        - coalesce(sum(amount) filter (where type = 'reversal' and paid = true), 0)
+                                                                as totale_pagato,
+      max(created_at)                                           as ultima_transazione
+    from public.transactions
+    group by customer_id
+  ) agg on agg.customer_id = c.id
+  order by c.last_name, c.first_name, c.created_at;
+end;
+$$;
+
+-- Supabase concede EXECUTE a anon via default privileges su ogni nuova
+-- function: revoke from public NON lo copre, serve revoke esplicito.
+revoke execute on function public.get_archive_aggregates() from public, anon;
+grant  execute on function public.get_archive_aggregates() to authenticated;
+
+-- Enum tradotti via CASE SQL per evitare lookup client-side.
+drop function if exists public.get_archive_details();
+
+create or replace function public.get_archive_details()
+returns table(
+  tipo                text,
+  importo_eur         numeric,
+  note                text,
+  data_registrazione  timestamptz,
+  data_cancellazione  timestamptz,
+  operatore           text,
+  pagato              text,
+  data_pagamento      timestamptz,
+  metodo_pagamento    text,
+  incassato_da        text,
+  cliente             text,
+  telefono_cliente    text
+)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if not public.is_admin_or_above() then
+    raise exception 'forbidden: only admin or super_admin can run get_archive_details'
+      using errcode = '42501';
+  end if;
+
+  return query
+  select
+    case t.type
+      when 'charge'   then 'Addebito'
+      when 'reversal' then 'Storno'
+    end,
+    t.amount,
+    t.notes,
+    t.created_at,
+    t.deleted_at,
+    op.first_name || ' ' || op.last_name,
+    case when t.paid then 'Si' else 'No' end,
+    t.paid_at,
+    case t.payment_method
+      when 'cash'     then 'Contanti'
+      when 'card'     then 'Carta'
+      when 'transfer' then 'Bonifico'
+      when 'other'    then 'Altro'
+    end,
+    case when pay.id is null then null
+         else pay.first_name || ' ' || pay.last_name end,
+    c.first_name || ' ' || c.last_name,
+    c.phone
+  from public.transactions t
+  join public.customers c on c.id = t.customer_id
+  join public.profiles  op on op.id = t.user_id
+  left join public.profiles pay on pay.id = t.paid_by_id
+  order by t.created_at desc;
+end;
+$$;
+
+revoke execute on function public.get_archive_details() from public, anon;
+grant  execute on function public.get_archive_details() to authenticated;

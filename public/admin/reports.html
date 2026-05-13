@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="it" class="sl-theme-light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f8a3e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ABT">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <script src="/assets/pwa.js" defer></script>
+  <title>Report -- AnotherBeachToken</title>
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script src="/assets/nav.js"></script>
+  <script src="/assets/csv.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    section.reports {
+      margin-top: var(--space-5);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      box-shadow: var(--shadow-card);
+    }
+    .download-row {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      max-width: 24rem;
+    }
+    .download-row small { color: var(--color-ink-muted); }
+  </style>
+</head>
+<body x-cloak x-data="adminReportsPage" x-init="init()">
+  <nav class="app-nav" x-data="appNav" x-init="init()">
+    <h1 x-text="t.adminReports.title"></h1>
+    <div class="nav-actions">
+      <template x-for="item in items" :key="item.path">
+        <a class="btn btn--ghost" :class="item.isCurrent ? 'btn--current' : ''"
+           :href="item.path" x-text="item.label"></a>
+      </template>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article role="status" x-show="successMessage" x-cloak x-text="successMessage"></article>
+    <article class="error" role="alert" x-show="errorMessage" x-cloak x-text="errorMessage"></article>
+
+    <p x-text="t.adminReports.intro"></p>
+
+    <section class="reports">
+      <h2 x-text="t.adminReports.exportsTitle"></h2>
+      <div class="download-row">
+        <button class="btn btn--primary" :disabled="downloading.aggregate"
+                @click="downloadAggregate()"
+                x-text="downloading.aggregate ? t.adminReports.downloadingAggregate : t.adminReports.exportAggregate"></button>
+        <button class="btn btn--primary" :disabled="downloading.details"
+                @click="downloadDetails()"
+                x-text="downloading.details ? t.adminReports.downloadingDetails : t.adminReports.exportDetails"></button>
+        <small x-text="t.adminReports.exportsHint"></small>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('adminReportsPage', function () {
+        return {
+          t: window.Strings,
+          downloading: { aggregate: false, details: false },
+          successMessage: null,
+          errorMessage: null,
+
+          async init() {
+            var session = await window.Auth.requireAdminOrAbove();
+            if (!session) return;
+            document.body.removeAttribute('x-cloak');
+          },
+
+          todayIso() {
+            var d = new Date();
+            var dd = String(d.getDate()).padStart(2, '0');
+            var mm = String(d.getMonth() + 1).padStart(2, '0');
+            var yyyy = d.getFullYear();
+            return yyyy + '-' + mm + '-' + dd;
+          },
+
+          remapRows(rows, keys, headers) {
+            // csv.js usa columns sia come header sia come key di lookup; per
+            // header IT diversi dalle chiavi snake_case rimappiamo le righe.
+            var out = [];
+            for (var i = 0; i < rows.length; i++) {
+              var r = rows[i] || {};
+              var mapped = {};
+              for (var k = 0; k < keys.length; k++) {
+                mapped[headers[k]] = r[keys[k]];
+              }
+              out.push(mapped);
+            }
+            return out;
+          },
+
+          downloadCsv(filename, rows, keys, headers) {
+            var mapped = this.remapRows(rows, keys, headers);
+            var csv = window.Csv.serialize(mapped, headers);
+            var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          },
+
+          async downloadAggregate() {
+            if (this.downloading.aggregate) return;
+            this.downloading.aggregate = true;
+            this.errorMessage = null;
+            try {
+              var resp = await window.Auth.client.rpc('get_archive_aggregates');
+              if (resp.error) throw resp.error;
+              var rows = resp.data || [];
+              var filename = 'aggregato-stagione-' + this.todayIso() + '.csv';
+              this.downloadCsv(
+                filename, rows,
+                this.t.adminReports.aggregateColumnKeys,
+                this.t.adminReports.aggregateColumns
+              );
+              this.successMessage = filename + ' (' + this.t.adminReports.rowsCount(rows.length) + ')';
+            } catch (e) {
+              console.error('[admin-reports] downloadAggregate', e);
+              this.errorMessage = this.t.adminReports.downloadError;
+            } finally {
+              this.downloading.aggregate = false;
+            }
+          },
+
+          async downloadDetails() {
+            if (this.downloading.details) return;
+            this.downloading.details = true;
+            this.errorMessage = null;
+            try {
+              var resp = await window.Auth.client.rpc('get_archive_details');
+              if (resp.error) throw resp.error;
+              var rows = resp.data || [];
+              var filename = 'dettaglio-transazioni-' + this.todayIso() + '.csv';
+              this.downloadCsv(
+                filename, rows,
+                this.t.adminReports.detailColumnKeys,
+                this.t.adminReports.detailColumns
+              );
+              this.successMessage = filename + ' (' + this.t.adminReports.rowsCount(rows.length) + ')';
+            } catch (e) {
+              console.error('[admin-reports] downloadDetails', e);
+              this.errorMessage = this.t.adminReports.downloadError;
+            } finally {
+              this.downloading.details = false;
+            }
+          },
+
+          async logout() { await window.Auth.signOut(); }
+        };
+      });
+    });
+  </script>
+</body>
+</html>

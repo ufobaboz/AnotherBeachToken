@@ -1,7 +1,3 @@
-// repo/supabase/functions/change-role/index.ts
-// Cambia il ruolo di un profilo. Solo super_admin.
-// Vincoli: target != caller, target.role != 'super_admin', new_role in ('operator','admin'),
-// new_role != target.role.
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const CORS_HEADERS: Record<string, string> = {

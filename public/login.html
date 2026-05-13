@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#145d2f">
+  <meta name="theme-color" content="#1f8a3e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ABT">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-  <script src="/assets/pwa.js" defer></script>
-  <title>Accedi -- Customer QR Tracker</title>
+  <title>Accedi -- AnotherBeachToken</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -19,12 +18,11 @@
   <script src="/assets/auth.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
-    [x-cloak] { display: none !important; }
-    main.container { max-width: 28rem; margin-top: 4rem; }
+    main.container.login-hero { margin-top: 3.5rem; }
   </style>
 </head>
 <body x-cloak x-data="loginPage" x-init="init()">
-  <main class="container">
+  <main class="container container--narrow login-hero">
     <hgroup>
       <h1 x-text="t.login.title"></h1>
       <p x-text="t.app.title"></p>
@@ -60,9 +58,6 @@
           error: null,
           async init() {
             await window.Auth.redirectIfAuthenticated();
-            // Se anon, la pagina resta visibile. x-cloak lo gestisce a livello di body
-            // ma serve un toggle esplicito: rimuoviamo x-cloak settando l'attributo
-            // sul body via Alpine quando init() risolve.
             document.body.removeAttribute('x-cloak');
           },
           errorMessage() {

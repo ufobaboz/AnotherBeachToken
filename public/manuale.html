@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="it" class="sl-theme-light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f8a3e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ABT">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <script src="/assets/pwa.js" defer></script>
+  <title>Manuale -- AnotherBeachToken</title>
+  <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/vendor/supabase/2.105.3/supabase.js"></script>
+  <script src="/assets/config.js"></script>
+  <script src="/assets/strings.js"></script>
+  <script src="/assets/auth.js"></script>
+  <script src="/assets/nav.js"></script>
+  <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
+  <style>
+    main.container article.manuale-section {
+      margin-top: var(--space-5);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      box-shadow: var(--shadow-card);
+    }
+    main.container article.manuale-section h2 {
+      margin-top: 0;
+      margin-bottom: var(--space-3);
+    }
+    main.container article.manuale-section h3 {
+      margin-top: var(--space-4);
+      margin-bottom: var(--space-2);
+      font-size: var(--text-lg);
+      color: var(--color-ink);
+    }
+    main.container article.manuale-section p {
+      margin: var(--space-2) 0;
+    }
+    main.container article.manuale-section ul {
+      padding-left: var(--space-4);
+      margin: var(--space-2) 0;
+    }
+    main.container article.manuale-section li {
+      margin: var(--space-2) 0;
+    }
+    main.container article.manuale-section li strong {
+      color: var(--color-ink);
+    }
+    main.container .manuale-intro {
+      font-size: var(--text-lg);
+      color: var(--color-ink-soft);
+      margin: var(--space-3) 0;
+    }
+    main.container .manuale-outro {
+      margin-top: var(--space-5);
+      font-size: var(--text-lg);
+      color: var(--color-ink);
+      text-align: center;
+    }
+  </style>
+</head>
+<body x-cloak x-data="manualePage" x-init="init()">
+  <nav class="app-nav" x-data="appNav" x-init="init()">
+    <h1>Manuale</h1>
+    <div class="nav-actions">
+      <template x-for="item in items" :key="item.path">
+        <a class="btn btn--ghost" :class="item.isCurrent ? 'btn--current' : ''"
+           :href="item.path" x-text="item.label"></a>
+      </template>
+      <button class="btn btn--outline" @click="logout()" x-text="t.logout"></button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <p class="manuale-intro">
+      Ecco come funziona l'app. Si legge in un minuto.
+    </p>
+
+    <article class="manuale-section" aria-labelledby="sec-funziona">
+      <h2 id="sec-funziona">1. Come funziona</h2>
+      <ul>
+        <li><strong>Arrivo.</strong> In reception registriamo il cliente. L'app gli invia subito un WhatsApp col suo QR Code personale.</li>
+        <li><strong>Consumazioni.</strong> Il cliente ordina al bar o al ristorante. Non serve il portafoglio: l'operatore inquadra il suo QR, digita l'importo e conferma. Il conto si aggiorna all'istante sulla pagina pubblica accessibile dal QR del cliente.</li>
+        <li><strong>Chiusura conto.</strong> Prima di partire, il cliente passa in cassa, paga il totale e l'Admin chiude il conto con un clic.</li>
+        <li><strong>Clienti abituali.</strong> Se un ospite va e torna piu' volte nella stagione, in cassa usa <em>Chiusura parziale</em> invece di <em>Chiudi conto e archivia</em>: salda gli addebiti ma tiene il conto aperto.</li>
+      </ul>
+    </article>
+
+    <article class="manuale-section" aria-labelledby="sec-ruoli">
+      <h2 id="sec-ruoli">2. Chi fa cosa (i ruoli)</h2>
+
+      <h3>Operatore (staff)</h3>
+      <ul>
+        <li><strong>Cosa fa.</strong> Scansiona i QR e addebita le consumazioni.</li>
+        <li><strong>Se sbaglia a digitare.</strong> Fa uno storno. Regola d'oro: la storia delle transazioni e' immutabile. Se l'operatore sbaglia, storna l'errore e ribatte la cifra corretta.</li>
+      </ul>
+
+      <h3>Admin (responsabili)</h3>
+      <ul>
+        <li><strong>Cosa fa.</strong> Tutto cio' che fa l'operatore, piu': chiude i conti (incassando il saldo a fine soggiorno), gestisce le anagrafiche dei clienti, scarica i report per la contabilita'.</li>
+      </ul>
+    </article>
+
+    <article class="manuale-section" aria-labelledby="sec-menu">
+      <h2 id="sec-menu">3. Il menu</h2>
+      <p>Trovi tutto nella barra in alto (o dentro il menu hamburger su mobile). Ecco le voci principali:</p>
+      <ul>
+        <li><strong>Clienti.</strong> La lista di chi e' in campeggio. Da qui aggiungi nuovi ospiti o rimandi il QR a chi lo perde.</li>
+        <li><strong>Scan.</strong> La funzione principale dell'operatore: apre la fotocamera, legge il QR del cliente e carica l'addebito.</li>
+        <li><strong>Utenti.</strong> Crea e gestisce gli account degli operatori dello staff.</li>
+        <li><strong>Report.</strong> Scarica i riepiloghi dei clienti e delle transazioni (CSV).</li>
+        <li><strong>Profilo</strong> Per consultare i tuoi dati e resettare la password.</li>        
+        <li><strong>Installa app.</strong> Salva l'icona dell'app sulla schermata home del telefono. Aprila da li' per essere piu' veloce.</li>
+        <li><strong>Manuale.</strong> Riporta a questa guida rapida in caso di dubbi.</li>
+        <li><strong>Esci.</strong> Per scollegarti dall'account.</li>        
+        
+      </ul>
+    </article>
+
+    <article class="manuale-section" aria-labelledby="sec-via">
+      <h2 id="sec-via">4. E ora cosa faccio?</h2>
+      <p>Tre passi per testare che tutto funzioni:</p>
+      <ol>
+        <li><strong>Censisci un operatore di prova.</strong> Vai su <strong>Utenti</strong>, click <em>Nuovo operatore</em>. Inserisci nome, cognome, email e una password iniziale. Comunica le credenziali allo staff fuori app.</li>
+        <li><strong>Anagrafa un cliente di test.</strong> Vai su <strong>Clienti</strong>, click <em>+ Nuovo cliente</em>. Compila nome, cognome e telefono. L'app genera il QR e ti propone di mandarlo via WhatsApp.</li>
+        <li><strong>Prova il flusso.</strong> Apri il dettaglio del cliente, fai uno o due addebiti di prova. Apri la pagina pubblica scansionando il QR e verifica che il conto si aggiorni. Poi vai in <strong>Chiusura conto</strong> e chiudi il conto col metodo di pagamento. Se tutto funziona, archivia il cliente di test e sei pronto.</li>
+      </ol>
+    </article>
+
+    <p class="manuale-outro">Tutto qui. Buona stagione.</p>
+  </main>
+
+  <script>
+    document.addEventListener('alpine:init', function () {
+      Alpine.data('manualePage', function () {
+        return {
+          t: window.Strings,
+          async init() {
+            var session = await window.Auth.requireAdminOrAbove();
+            if (!session) return;
+            document.body.removeAttribute('x-cloak');
+          },
+          async logout() { await window.Auth.signOut(); }
+        };
+      });
+    });
+  </script>
+</body>
+</html>

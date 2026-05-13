@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#145d2f">
+  <meta name="theme-color" content="#1f8a3e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ABT">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <script src="/assets/pwa.js" defer></script>
-  <title>Profilo -- Customer QR Tracker</title>
+  <title>Profilo -- AnotherBeachToken</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -21,18 +21,6 @@
   <script type="module" src="/vendor/shoelace/2.20.1/components/dialog/dialog.js"></script>
   <script type="module" src="/vendor/shoelace/2.20.1/components/button/button.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
-  <style>
-    [x-cloak] { display: none !important; }
-    article[role="status"] {
-      padding: 0.6rem 0.9rem; margin-bottom: 1rem;
-      background: var(--sl-color-success-600); color: var(--sl-color-neutral-0); border-radius: var(--sl-border-radius-medium);
-    }
-    article.error { background: var(--sl-color-danger-600); color: var(--sl-color-neutral-0); }
-    dl.profile-fields dt { font-weight: bold; margin-top: 0.5rem; }
-    dl.profile-fields dd { margin: 0 0 0.5rem 0; }
-    sl-dialog form label { display: block; margin-bottom: 0.5rem; }
-    sl-dialog small.hint { color: var(--sl-color-neutral-500); display: block; margin-top: -0.25rem; }
-  </style>
 </head>
 <body x-cloak x-data="mePage" x-init="init()">
   <nav class="app-nav" x-data="appNav" x-init="init()">
@@ -46,8 +34,6 @@
     </div>
   </nav>
   <main class="container">
-    <a href="/customers" x-text="t.me.back"></a>
-
     <article class="error" role="alert" x-show="errorMessage" x-cloak x-text="errorMessage"></article>
     <article role="status" x-show="successMessage" x-cloak x-text="successMessage"></article>
 

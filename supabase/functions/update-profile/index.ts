@@ -1,7 +1,3 @@
-// repo/supabase/functions/update-profile/index.ts
-// UPDATE profiles first_name/last_name/notes. Chiamante admin+ su operator,
-// OR proprietario su se stesso (in M6 nessuna UI per il branch self, ma
-// l'edge function lo accetta gia' per evitare di rifarla in M7).
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -115,9 +111,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse(errorBody('bad_request', 'Note troppo lunghe (max 1000).'), 400);
   }
 
-  // Authorization branches:
-  // (a) caller modifica se stesso (proprietario): consentito qualsiasi ruolo
-  // (b) caller admin+ modifica un operator
   const isSelf = caller.userId === targetId;
   const isAdminPlus = caller.role === 'admin' || caller.role === 'super_admin';
 
@@ -126,7 +119,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse(errorBody('forbidden_role', 'Ruolo insufficiente.'), 403);
   }
 
-  // Lookup target
   const targetResp = await serviceClient
     .from('profiles').select('role, deleted_at').eq('id', targetId).maybeSingle();
   if (targetResp.error) {
@@ -137,9 +129,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.log(JSON.stringify({ event: 'update-profile', status: 404, error: 'target_not_found', caller_id: caller.userId, target_id: targetId, latency_ms: Date.now() - startedAt }));
     return jsonResponse(errorBody('target_not_found', 'Target non trovato.'), 404);
   }
-  // Branch admin+ ha vincoli sul target.role:
-  //   caller=admin       -> target.role='operator' richiesto.
-  //   caller=super_admin -> target.role in ('operator','admin') richiesto.
   if (!isSelf) {
     const targetRole = targetResp.data.role;
     if (caller.role === 'admin' && targetRole !== 'operator') {

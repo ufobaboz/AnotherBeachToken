@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#145d2f">
+  <meta name="theme-color" content="#1f8a3e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ABT">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <script src="/assets/pwa.js" defer></script>
-  <title>Dettaglio cliente -- Customer QR Tracker</title>
+  <title>Dettaglio cliente -- AnotherBeachToken</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -22,79 +22,69 @@
   <script type="module" src="/vendor/shoelace/2.20.1/components/button/button.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
   <style>
-    [x-cloak] { display: none !important; }
-    .actions-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
-    dl.anagrafica dt { font-weight: bold; margin-top: 0.5rem; }
-    dl.anagrafica dd { margin-left: 0; }
-    img.qr-preview { max-width: 200px; image-rendering: pixelated; }
-    .balance-card {
-      padding: 0.75rem 1rem;
-      background: var(--sl-color-neutral-50);
-      border-radius: var(--sl-border-radius-medium);
-      margin-bottom: 0.75rem;
-      font-size: 1.1rem;
-    }
-    ul.transactions { list-style: none; padding: 0; margin: 0; }
-    li.tx {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      grid-template-rows: auto auto;
-      gap: 0.25rem 0.75rem;
-      padding: 0.6rem 0.4rem;
-      border-bottom: 1px solid var(--sl-color-neutral-200);
-    }
-    li.tx-annulled .tx-desc { opacity: 0.7; }
-    .tx-time { font-size: 0.85rem; color: var(--sl-color-neutral-500); }
-    .tx-action { grid-column: 1 / -1; text-align: right; }
-    .badge {
-      display: inline-block;
-      padding: 0.1rem 0.5rem;
-      border-radius: var(--sl-border-radius-small);
-      font-family: monospace;
-      font-size: 0.75rem;
-    }
-    .badge-aperto    { background: var(--sl-color-warning-600); color: var(--sl-color-neutral-0); }
-    .badge-annullato { background: var(--sl-color-neutral-600); color: var(--sl-color-neutral-0); }
-    .badge-saldato   { background: var(--sl-color-success-600); color: var(--sl-color-neutral-0); }
-    .tx-sub-info  { grid-column: 2 / -1; font-size: 0.85rem; color: var(--sl-color-neutral-500); }
-    .pos-cta-inline {
-      width: 100%;
-      margin-bottom: 1rem;
-      font-size: 1.1rem;
-      height: auto;
-      padding: 0.75rem;
-    }
+    /* POS overlay: schermata di addebito a tutto schermo. Page-specific. */
     .pos-overlay {
       position: fixed; inset: 0; z-index: 1000;
-      background: var(--sl-color-neutral-0);
+      background: var(--color-bg);
       display: flex; flex-direction: column;
-      padding: 1rem;
+      padding: var(--space-4);
+      animation: pos-enter var(--motion-base) ease-out;
     }
-    .pos-header { text-align: center; padding-bottom: 0.5rem; border-bottom: 1px solid var(--sl-color-neutral-200); }
-    .pos-customer { font-size: 1.1rem; font-weight: bold; }
-    .pos-balance { font-size: 0.9rem; color: var(--sl-color-neutral-500); }
+    @keyframes pos-enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .pos-header {
+      text-align: center;
+      padding-bottom: var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .pos-customer {
+      font-size: var(--text-lg);
+      font-weight: var(--weight-semibold);
+      color: var(--color-ink);
+      letter-spacing: var(--tracking-tight);
+    }
+    .pos-balance {
+      font-size: var(--text-sm);
+      color: var(--color-ink-muted);
+      margin-top: var(--space-1);
+    }
+    .pos-balance span { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
     .pos-display {
+      font-family: var(--font-mono);
       font-size: clamp(2.5rem, 12vw, 4rem);
-      font-weight: bold; text-align: center;
-      padding: 1.5rem 0;
-      font-variant-numeric: tabular-nums;
+      font-weight: var(--weight-bold);
+      text-align: center;
+      padding: var(--space-5) 0;
+      color: var(--color-ink);
+      letter-spacing: var(--tracking-tight);
     }
     .pos-keypad {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 0.5rem;
+      gap: var(--space-2);
     }
     .pos-keypad button {
-      min-height: 3.5rem; font-size: 1.5rem;
-      border-radius: var(--sl-input-border-radius-medium);
-      border: solid var(--sl-input-border-width) var(--sl-color-neutral-300);
-      background: var(--sl-color-neutral-0);
-      color: var(--sl-color-neutral-700);
+      min-height: 3.5rem;
+      font-size: var(--text-xl);
+      font-family: var(--font-mono);
+      font-weight: var(--weight-medium);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border-strong);
+      background: var(--color-surface);
+      color: var(--color-ink);
+      transition: background var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast);
     }
-    .pos-keypad button:hover { background: var(--sl-color-neutral-50); }
-    .pos-actions { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-    .pos-cta { width: 100%; font-size: 1.2rem; height: auto; padding: 1rem; }
-    .pos-error { color: var(--sl-color-danger-700); margin-top: 0.5rem; text-align: center; }
+    .pos-keypad button:hover  { background: var(--color-surface-alt); border-color: var(--color-ink-muted); }
+    .pos-keypad button:active { transform: translateY(1px); background: var(--color-surface-strong); }
+    .pos-actions {
+      margin-top: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .pos-error { text-align: center; }
   </style>
 </head>
 <body x-cloak x-data="customerDetailPage" x-init="init()">
@@ -120,14 +110,13 @@
         <div class="actions-bar">
           <a :href="qrDataUrl" :download="qrFileName" class="btn btn--outline" x-show="qrDataUrl" x-cloak
              x-text="t.customerDetail.downloadQr"></a>
-          <a :href="whatsappQrUrl" target="_blank" rel="noopener"
-             class="btn btn--outline" x-text="t.customerDetail.sendQrWhatsApp"></a>
           <a :href="whatsappBalanceUrl" target="_blank" rel="noopener"
-             class="btn btn--outline" x-text="t.customerDetail.balance.sendWhatsApp"></a>
+             class="btn btn--outline" x-text="t.customerDetail.sendWhatsApp"></a>
           <a :href="'/checkout/' + customer.id" class="btn btn--primary"
              x-show="canCheckout" x-cloak
              x-text="t.customerDetail.ctaCheckout"></a>
-          <button class="btn btn--danger" @click="openDeleteDialog()" x-show="canDelete" x-cloak
+          <button class="btn btn--danger" @click="openDeleteDialog()"
+                  x-show="canDelete && balanceReady && openBalance === 0" x-cloak
                   x-text="t.customerDetail.deleteButton"></button>
         </div>
 
@@ -151,10 +140,14 @@
 
         <h3 x-text="t.customerDetail.sectionTransactions"></h3>
         <div class="balance-card">
-          <strong x-text="t.customerDetail.balance.label"></strong>:
+          <strong x-text="t.customerDetail.balance.label"></strong>
           <span x-text="formatBalance(openBalance) + ' EUR'"></span>
+          <button class="btn btn--outline btn--sm balance-refresh"
+                  @click="refreshTransactions()"
+                  :disabled="refreshing"
+                  x-text="t.customerDetail.balance.refresh"></button>
         </div>
-        <button class="btn btn--primary pos-cta-inline" @click="openPos()" x-text="t.customerDetail.charge.ctaNew"></button>
+        <button class="btn btn--primary btn--cta" @click="openPos()" x-text="t.customerDetail.charge.ctaNew"></button>
 
         <article x-show="transactions.length === 0" x-cloak>
           <p x-text="t.customerDetail.transactions.empty"></p>
@@ -187,21 +180,21 @@
           </header>
           <div class="pos-display" x-text="formatPosDisplay() + ' EUR'"></div>
           <div class="pos-keypad">
-            <button type="button" @click="posDigit('7')">7</button>
-            <button type="button" @click="posDigit('8')">8</button>
-            <button type="button" @click="posDigit('9')">9</button>
-            <button type="button" @click="posDigit('4')">4</button>
-            <button type="button" @click="posDigit('5')">5</button>
-            <button type="button" @click="posDigit('6')">6</button>
-            <button type="button" @click="posDigit('1')">1</button>
-            <button type="button" @click="posDigit('2')">2</button>
-            <button type="button" @click="posDigit('3')">3</button>
-            <button type="button" @click="posDigit('0')">0</button>
-            <button type="button" @click="posComma()">,</button>
-            <button type="button" @click="posBackspace()" :aria-label="t.customerDetail.charge.backspaceLabel">&larr;</button>
+            <button type="button" data-key="7" @click="posDigit('7')">7</button>
+            <button type="button" data-key="8" @click="posDigit('8')">8</button>
+            <button type="button" data-key="9" @click="posDigit('9')">9</button>
+            <button type="button" data-key="4" @click="posDigit('4')">4</button>
+            <button type="button" data-key="5" @click="posDigit('5')">5</button>
+            <button type="button" data-key="6" @click="posDigit('6')">6</button>
+            <button type="button" data-key="1" @click="posDigit('1')">1</button>
+            <button type="button" data-key="2" @click="posDigit('2')">2</button>
+            <button type="button" data-key="3" @click="posDigit('3')">3</button>
+            <button type="button" data-key="0" @click="posDigit('0')">0</button>
+            <button type="button" data-key="," @click="posComma()">,</button>
+            <button type="button" data-key="back" @click="posBackspace()" :aria-label="t.customerDetail.charge.backspaceLabel">&larr;</button>
           </div>
           <div class="pos-actions">
-            <button class="btn btn--primary pos-cta" :disabled="!posValid() || posSubmitting"
+            <button class="btn btn--primary btn--cta" :disabled="!posValid() || posSubmitting"
                     @click="submitCharge()"
                     x-text="posSubmitting ? t.customerDetail.charge.submitting : t.customerDetail.charge.submit"></button>
             <button class="btn btn--outline" @click="closePos()" x-text="t.customerDetail.charge.cancel"></button>
@@ -240,7 +233,6 @@
           deleting: false,
           qrDataUrl: '',
           qrFileName: '',
-          whatsappQrUrl: '',
           whatsappBalanceUrl: '',
           session: null,
           transactions: [],
@@ -254,6 +246,8 @@
           posError: null,
           reversalCharge: null,
           reversalSubmitting: false,
+          refreshing: false,
+          balanceReady: false,
           async init() {
             var session = await window.Auth.requireAuth();
             if (!session) return;
@@ -269,7 +263,6 @@
             }
             this.customer = resp.data;
             await this.computeQr();
-            this.computeWhatsApp();
             await this.refreshTransactions();
             this.computeWhatsAppBalance();
             var role = await window.Auth.getRole();
@@ -280,7 +273,7 @@
               if (params.get('charge') === '1') {
                 this.openPos();
               }
-            } catch (e) { /* ignore */ }
+            } catch (e) { }
           },
           async computeQr() {
             var publicUrl = window.location.origin + '/qr/' + this.customer.qr_token;
@@ -293,12 +286,6 @@
             } catch (e) {
               console.error('[detail] qr generation failed', e);
             }
-          },
-          computeWhatsApp() {
-            var publicUrl = window.location.origin + '/qr/' + this.customer.qr_token;
-            var phoneNoPlus = (this.customer.phone || '').replace(/^\+/, '');
-            var text = this.t.customerDetail.qrWhatsAppText(this.customer.first_name, publicUrl);
-            this.whatsappQrUrl = 'https://wa.me/' + phoneNoPlus + '?text=' + encodeURIComponent(text);
           },
           computeWhatsAppBalance() {
             if (!this.customer) { this.whatsappBalanceUrl = ''; return; }
@@ -326,6 +313,8 @@
           },
           async refreshTransactions() {
             if (!this.customer) return;
+            if (this.refreshing) return;
+            this.refreshing = true;
             var resp = await window.Auth.client.from('transactions')
               .select('id, type, amount, reversal_of_id, paid, paid_at, payment_method, paid_by_id, created_at, paidBy:profiles!paid_by_id(first_name, last_name)')
               .eq('customer_id', this.customer.id)
@@ -338,13 +327,12 @@
               this.reversalByCharge = {};
               this.reversedIds = new Set();
               this.openBalance = 0;
+              this.refreshing = false;
               return;
             }
             this.transactions = resp.data || [];
-            // Indici di supporto per il rendering "riga unica":
-            // - reversedIds = set di charge.id che hanno un reversal associato
-            // - reversalByCharge = chargeId -> riga reversal (per timestamp annullamento)
-            // - displayTransactions = lista filtrata mostrata: charges + reversal orfani (safety)
+            // displayTransactions = charges + reversal orfani (safety): rendering
+            // "riga unica" che aggrega charge+reversal sulla riga della charge.
             this.reversedIds = new Set();
             this.reversalByCharge = {};
             var chargeIds = new Set();
@@ -362,12 +350,12 @@
             }
             this.displayTransactions = this.transactions.filter(function (t) {
               if (t.type === 'charge') return true;
-              // reversal con charge associata: nascosto (info nello slot della charge)
               if (t.reversal_of_id && chargeIds.has(t.reversal_of_id)) return false;
-              // reversal orfano: mostralo come riga a se' (safety, non dovrebbe accadere)
               return true;
             });
             this.recomputeBalance();
+            this.balanceReady = true;
+            this.refreshing = false;
           },
           recomputeBalance() {
             var sumCharges = 0, sumReversals = 0;
@@ -428,9 +416,7 @@
             return this.t.customerDetail.transactions.paidInfoNoName(date, method);
           },
           subInfoText(tx) {
-            // Sub-info sotto la riga charge: priorita' = annullato > saldato > niente.
-            // Su charge stornata mostriamo "annullato il <timestamp del reversal>".
-            // Su charge non stornata ma paid, mostriamo "saldato il <timestamp del pagamento>".
+            // Priorita': annullato > saldato > niente.
             if (tx.type === 'charge' && this.reversedIds.has(tx.id)) {
               var rev = this.reversalByCharge[tx.id];
               if (rev) {

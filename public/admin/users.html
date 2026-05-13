@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#145d2f">
+  <meta name="theme-color" content="#1f8a3e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ABT">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <script src="/assets/pwa.js" defer></script>
-  <title>Gestione utenti -- Customer QR Tracker</title>
+  <title>Gestione utenti -- AnotherBeachToken</title>
   <link rel="stylesheet" href="/vendor/shoelace/2.20.1/themes/light.css">
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/vendor/supabase/2.105.3/supabase.js"></script>
@@ -21,22 +21,6 @@
   <script type="module" src="/vendor/shoelace/2.20.1/components/dialog/dialog.js"></script>
   <script type="module" src="/vendor/shoelace/2.20.1/components/button/button.js"></script>
   <script defer src="/vendor/alpinejs/3.15.12/alpine.min.js"></script>
-  <style>
-    [x-cloak] { display: none !important; }
-    .actions-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
-    .actions-bar label { display: flex; align-items: center; gap: 0.35rem; margin: 0; }
-    .row-actions { display: flex; gap: 0.25rem; flex-wrap: wrap; }
-    article[role="status"] {
-      padding: 0.6rem 0.9rem; margin-bottom: 1rem;
-      background: var(--sl-color-success-600); color: var(--sl-color-neutral-0); border-radius: var(--sl-border-radius-medium);
-    }
-    article.error { background: var(--sl-color-danger-600); color: var(--sl-color-neutral-0); }
-    sl-dialog form label { display: block; margin-bottom: 0.5rem; }
-    sl-dialog small.hint { color: var(--sl-color-neutral-500); display: block; margin-top: -0.25rem; }
-    tr.deleted { opacity: 0.5; }
-    .role-badge { font-size: 0.85rem; font-family: monospace; }
-    .deleted-mark { font-size: 0.8rem; color: var(--sl-color-danger-700); margin-left: 0.4rem; }
-  </style>
 </head>
 <body x-cloak x-data="adminUsersPage" x-init="init()">
   <nav class="app-nav" x-data="appNav" x-init="init()">
@@ -50,16 +34,13 @@
     </div>
   </nav>
   <main class="container">
-    <a href="/customers" x-text="t.adminUsers.backToCustomers"></a>
-
     <div class="actions-bar">
       <button class="btn btn--primary" @click="openCreateDialog('operator')" x-text="t.adminUsers.newOperatorButton"></button>
       <button class="btn btn--primary" x-show="role === 'super_admin'" x-cloak
               @click="openCreateDialog('admin')" x-text="t.adminUsers.newAdminButton"></button>
-      <label x-show="role === 'super_admin'" x-cloak>
-        <input type="checkbox" x-model="showDeleted" @change="loadUsers()">
-        <span x-text="t.adminUsers.showDeleted"></span>
-      </label>
+      <button class="btn btn--outline"
+              @click="toggleShowDeleted()"
+              x-text="showDeleted ? t.adminUsers.showActiveOnly : t.adminUsers.showAll"></button>
     </div>
 
     <article role="status" x-show="successMessage" x-cloak x-text="successMessage"></article>
@@ -74,29 +55,30 @@
         <tr>
           <th x-text="t.adminUsers.columnName"></th>
           <th x-text="t.adminUsers.columnRole"></th>
-          <th x-text="t.adminUsers.columnLastLogin"></th>
           <th x-text="t.adminUsers.columnActions"></th>
         </tr>
       </thead>
       <tbody>
         <template x-for="op in users" :key="op.id">
           <tr :class="op.deleted_at ? 'deleted' : ''">
-            <td x-text="op.last_name + ' ' + op.first_name"></td>
+            <td>
+              <span x-text="op.first_name"></span><br>
+              <span x-text="op.last_name"></span>
+            </td>
             <td>
               <span class="role-badge" x-text="op.role"></span>
               <span x-show="op.deleted_at" x-cloak class="deleted-mark"
                     x-text="t.adminUsers.deletedBadge(formatDateShort(op.deleted_at))"></span>
             </td>
-            <td x-text="formatLastLogin(op.last_login_at)"></td>
             <td>
               <div class="row-actions" x-show="!op.deleted_at" x-cloak>
-                <button class="btn btn--outline" x-show="canEdit(op)" x-cloak
+                <button class="btn btn--outline btn--sm" x-show="canEdit(op)" x-cloak
                         @click="openEditDialog(op)" x-text="t.adminUsers.editButton"></button>
-                <button class="btn btn--outline" x-show="canResetPw(op)" x-cloak
+                <button class="btn btn--outline btn--sm" x-show="canResetPw(op)" x-cloak
                         @click="openResetPwDialog(op)" x-text="t.adminUsers.resetPwButton"></button>
-                <button class="btn btn--outline" x-show="canChangeRole(op)" x-cloak
+                <button class="btn btn--outline btn--sm" x-show="canChangeRole(op)" x-cloak
                         @click="openChangeRoleDialog(op)" x-text="t.adminUsers.changeRoleButton"></button>
-                <button class="btn btn--danger" x-show="canDelete(op)" x-cloak
+                <button class="btn btn--danger btn--sm" x-show="canDelete(op)" x-cloak
                         @click="openDeleteDialog(op)" x-text="t.adminUsers.deleteButton"></button>
               </div>
             </td>
@@ -223,26 +205,52 @@
             this.loading = false;
           },
           async loadUsers() {
-            var query = window.Auth.client.from('profiles')
-              .select('id, first_name, last_name, role, last_login_at, deleted_at');
-            if (this.role === 'admin') {
-              // admin vede solo operator attivi (RLS profiles_select_admin_active filtra deleted).
-              query = query.eq('role', 'operator').is('deleted_at', null);
-            } else {
-              // super_admin: vede operator + admin; se !showDeleted filtra deleted.
-              query = query.in('role', ['operator', 'admin']);
-              if (!this.showDeleted) query = query.is('deleted_at', null);
+            // PostgREST clampa range > max-rows server-side (default 1000):
+            // serve loop esplicito per dataset > 1000 righe.
+            var chunk = 1000;
+            var all = [];
+            var self = this;
+            function buildQuery(offset) {
+              var q = window.Auth.client.from('profiles')
+                .select('id, first_name, last_name, role, last_login_at, deleted_at')
+                .range(offset, offset + chunk - 1);
+              if (self.role === 'admin') {
+                q = q.eq('role', 'operator');
+              } else {
+                q = q.in('role', ['operator', 'admin']);
+              }
+              if (!self.showDeleted) q = q.is('deleted_at', null);
+              return q;
             }
-            query = query.order('role', { ascending: true })
-                         .order('last_name', { ascending: true })
-                         .order('first_name', { ascending: true });
-            var resp = await query;
+            var resp = { data: null, error: null };
+            for (var offset = 0; ; offset += chunk) {
+              var page = await buildQuery(offset);
+              if (page.error) { resp = page; break; }
+              var batch = page.data || [];
+              all = all.concat(batch);
+              if (batch.length < chunk) break;
+            }
+            if (!resp.error) resp = { data: all, error: null };
             if (resp.error) {
               console.error('[admin-users] loadUsers', resp.error);
               this.users = [];
               return;
             }
-            this.users = resp.data || [];
+            this.users = (resp.data || []).slice().sort(function (a, b) {
+              if (!a.deleted_at && b.deleted_at) return -1;
+              if (a.deleted_at && !b.deleted_at) return 1;
+              if (a.deleted_at && b.deleted_at && a.deleted_at !== b.deleted_at) {
+                return a.deleted_at < b.deleted_at ? -1 : 1;
+              }
+              if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
+              var byLast = (a.last_name || '').localeCompare(b.last_name || '', 'it');
+              if (byLast !== 0) return byLast;
+              return (a.first_name || '').localeCompare(b.first_name || '', 'it');
+            });
+          },
+          async toggleShowDeleted() {
+            this.showDeleted = !this.showDeleted;
+            await this.loadUsers();
           },
           formatLastLogin(iso) {
             if (!iso) return this.t.adminUsers.neverLogged;
@@ -266,7 +274,6 @@
               return dd + '/' + mm + ' ' + hh + ':' + mi;
             } catch (e) { return iso; }
           },
-          // Visibility helpers per le azioni di riga
           canEdit(op) { return !op.deleted_at; },
           canResetPw(op) { return !op.deleted_at; },
           canDelete(op) {
@@ -282,7 +289,6 @@
             if (op.role === 'super_admin') return false;
             return true;
           },
-          // Create dialog (parametrico su role)
           openCreateDialog(role) {
             this.createForm = { role: role || 'operator', email: '', password: '', first_name: '', last_name: '', notes: '' };
             this.errorMessage = null;
@@ -328,7 +334,6 @@
             this.successMessage = this.t.adminUsers.createSuccess(this.createForm.role);
             await this.loadUsers();
           },
-          // Edit dialog
           openEditDialog(op) {
             this.editForm = {
               id: op.id,
@@ -378,7 +383,6 @@
             this.$refs.editDialog.hide();
             await this.loadUsers();
           },
-          // Reset password dialog
           resetPwMismatch() {
             if (!this.resetPwForm.password || !this.resetPwForm.confirm) return false;
             return this.resetPwForm.password !== this.resetPwForm.confirm;
@@ -417,7 +421,6 @@
             this.$refs.resetPwDialog.hide();
             this.successMessage = this.t.adminUsers.resetPwSuccess;
           },
-          // Delete dialog
           openDeleteDialog(op) {
             this.deleteForm = { id: op.id, firstName: op.first_name, lastName: op.last_name, role: op.role };
             this.errorMessage = null;
@@ -450,7 +453,6 @@
             this.$refs.deleteDialog.hide();
             await this.loadUsers();
           },
-          // Change role dialog
           openChangeRoleDialog(op) {
             var toRole = (op.role === 'operator') ? 'admin' : 'operator';
             this.changeRoleForm = {

@@ -1,5 +1,3 @@
-// repo/supabase/functions/soft-delete-profile/index.ts
-// Soft-delete profilo operator. Chiamante admin+. Target NON se stesso.
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const CORS_HEADERS: Record<string, string> = {

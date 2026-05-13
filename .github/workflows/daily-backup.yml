@@ -1,50 +1,96 @@
 name: Daily backup R2
 
-# Cron sospeso finche' i secret R2_*/SUPABASE_DB_URL non sono settati (M8 Sub-C C.1
-# rinviato dall'utente il 2026-05-10). Riabilitare la riga schedule quando l'utente
-# completa il setup R2 esterno e i secret sono in GitHub Secrets.
+# Per ogni tabella produce <t>.csv (pg-native, restore via \copy FROM) e
+# <t>.ita.csv (ITA-friendly, Europe/Rome). Upload daily/<YYYY-MM-DD>/ del
+# bucket; lifecycle rule cancella daily/ dopo 90 giorni; season-end/
+# (reset-season) non toccato.
 on:
-  # schedule:
-  #   - cron: '0 3 * * *'   # 03:00 UTC (04:00 CET / 05:00 CEST)
+  schedule:
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
   backup:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # AWS_ACCESS_KEY_ID/_SECRET_ACCESS_KEY contengono TOKEN R2 (non AWS).
+    # I secret sono esposti come env e referenziati come "$VAR": mai
+    # interpolare ${{ secrets.* }} dentro shell (rischio injection).
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
     steps:
-      - name: Install psql + awscli
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install psql
+        # AWS CLI v2 e' gia' nel PATH del runner ubuntu-latest. Il package
+        # apt 'awscli' (v1) e' stato rimosso da Ubuntu 24.04.
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client awscli
+          sudo apt-get install -y postgresql-client
+          aws --version
 
       - name: Resolve date (UTC)
         run: echo "BACKUP_DATE=$(date -u +%F)" >> $GITHUB_ENV
 
-      - name: Dump tables
+      - name: Create work dir
+        run: mkdir -p ./_backup
+
+      - name: Dump tables (CSV pg-native + JSON Lines)
+        working-directory: ./_backup
         run: |
           for t in customers transactions profiles; do
-            echo "Dumping $t ..."
-            psql "${{ secrets.SUPABASE_DB_URL }}" \
+            echo "Dumping $t (csv) ..."
+            psql "$SUPABASE_DB_URL" \
+              -v ON_ERROR_STOP=1 \
               -c "\copy public.$t TO '$t.csv' WITH (FORMAT csv, HEADER)"
-            echo "Dump $t done:"
-            ls -la "$t.csv"
+            echo "Dumping $t (jsonl) ..."
+            psql "$SUPABASE_DB_URL" \
+              -v ON_ERROR_STOP=1 \
+              -c "\copy (select row_to_json(r) from public.$t r) TO '$t.jsonl'"
+            ls -la "$t.csv" "$t.jsonl"
+          done
+
+      - name: Generate ITA CSV
+        working-directory: ./_backup
+        run: node ../scripts/daily-backup-ita.mjs
+
+      - name: Sanity check (non-empty CSVs)
+        working-directory: ./_backup
+        run: |
+          # csv.js joina con \r\n senza trailing newline -> wc -l = 0 per
+          # file con solo header. Usiamo -s + grep del separator atteso.
+          for f in customers.csv transactions.csv profiles.csv; do
+            if [ ! -s "$f" ]; then echo "Empty: $f"; exit 1; fi
+            head -1 "$f" | grep -q ',' || (echo "Header malformed (no comma): $f"; exit 1)
+          done
+          for f in customers.ita.csv transactions.ita.csv profiles.ita.csv; do
+            if [ ! -s "$f" ]; then echo "Empty: $f"; exit 1; fi
+            head -1 "$f" | grep -q ';' || (echo "Header malformed (no semicolon): $f"; exit 1)
           done
 
       - name: Upload to R2
+        working-directory: ./_backup
         run: |
           for t in customers transactions profiles; do
-            echo "Uploading $t.csv to s3://${{ secrets.R2_BUCKET }}/$BACKUP_DATE/$t.csv"
-            aws s3 cp "$t.csv" \
-              "s3://${{ secrets.R2_BUCKET }}/$BACKUP_DATE/$t.csv" \
-              --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+            for ext in csv ita.csv; do
+              echo "Uploading $t.$ext -> daily/$BACKUP_DATE/"
+              aws s3 cp "$t.$ext" \
+                "s3://$R2_BUCKET/daily/$BACKUP_DATE/$t.$ext" \
+                --endpoint-url "$R2_ENDPOINT"
+            done
           done
 
       - name: List uploaded
         run: |
-          aws s3 ls "s3://${{ secrets.R2_BUCKET }}/$BACKUP_DATE/" \
-            --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+          aws s3 ls "s3://$R2_BUCKET/daily/$BACKUP_DATE/" \
+            --endpoint-url "$R2_ENDPOINT"

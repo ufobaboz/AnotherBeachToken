@@ -1,21 +1,7 @@
-// repo/public/assets/csv.js
-// Helper di serializzazione CSV ITA-friendly per /admin/season.
-// Espone window.Csv.serialize(rows, columns) -> string.
-//
-// Convenzioni (M8 Sub-A):
-// - Separator ';' (Excel ITA su Windows con locale it-IT lo legge senza wizard).
-// - Quoting RFC 4180: campi con ';', '"', '\n', '\r' wrap in '"..."',
-//   '"' escape -> '""'.
-// - NULL/undefined -> stringa vuota.
-// - Boolean -> 'true'/'false'.
-// - Numero -> stringa numerica con punto decimale.
-// - ISO timestamptz -> 'dd/MM/yyyy HH:mm' in fuso Europe/Rome
-//   via Intl.DateTimeFormat('it-IT', { timeZone: 'Europe/Rome', ... }).
-// - Header: nome colonna come da DB (inglese), come passati nel parametro
-//   columns.
-//
-// Il caller wrappa l'output in un Blob con BOM UTF-8 per compatibilita'
-// Excel (vedi /admin/season.html download handler).
+// Dual-purpose (browser window.Csv + Node ESM/CJS export): single source of
+// truth della serializzazione CSV ITA-friendly. Separator ';', RFC 4180
+// quoting, anti-formula-injection (CWE-1236) e date in Europe/Rome.
+// Il caller wrappa in Blob con BOM UTF-8 per compatibilita' Excel.
 (function () {
   var ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 
@@ -56,8 +42,18 @@
     try { return JSON.stringify(value); } catch (e) { return String(value); }
   }
 
+  // CWE-1236: campi che iniziano con =, +, -, @, TAB, CR sono interpretati
+  // come formula. L'apostrofo iniziale e' rimosso visivamente dal parser ma
+  // sopprime la valutazione. Applicato PRIMA del quoting RFC 4180.
+  var FORMULA_PREFIX_RE = /^[=+\-@\t\r]/;
+  function neutralizeFormula(str) {
+    if (FORMULA_PREFIX_RE.test(str)) return "'" + str;
+    return str;
+  }
+
   function escape(str) {
     if (str === '') return '';
+    str = neutralizeFormula(str);
     if (/[;"\r\n]/.test(str)) {
       return '"' + str.replace(/"/g, '""') + '"';
     }
@@ -84,5 +80,7 @@
     return lines.join('\r\n');
   }
 
-  window.Csv = { serialize: serialize, formatCell: formatCell };
+  var Csv = { serialize: serialize, formatCell: formatCell };
+  if (typeof window !== 'undefined') window.Csv = Csv;
+  if (typeof module !== 'undefined' && module.exports) module.exports = Csv;
 })();

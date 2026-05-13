@@ -1,8 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-// Default DEV: la suite scrive su DB (insert customers/operators) e per policy
-// le scritture da automazioni vivono solo su DEV. Override APP_URL per smoke
-// read-only su PRD se serve.
+// Default DEV: per policy le scritture da automazioni vivono solo li'.
 const APP_URL = process.env.APP_URL || 'https://anotherbeachproject-dev.sovereto.workers.dev';
 
 export default defineConfig({
@@ -13,6 +11,7 @@ export default defineConfig({
   workers: 1,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
+  globalTeardown: './globalTeardown.ts',
   use: {
     baseURL: APP_URL,
     headless: true,
